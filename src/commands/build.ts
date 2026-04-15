@@ -6,6 +6,7 @@ import { readCache } from '../cache.js'
 import { callClaude } from '../ai/client.js'
 import { buildResumePrompt } from '../ai/prompt.js'
 import { markdownToPDF } from '../pdf/writer.js'
+import { ROLES } from '../config.js'
 import type { RoleKey } from '../types.js'
 
 export async function runBuild(options: { output?: string; noPdf?: boolean }) {
@@ -14,6 +15,17 @@ export async function runBuild(options: { output?: string; noPdf?: boolean }) {
 
   if (!cache) {
     console.error(chalk.red('✗ 未找到缓存文件，请先运行 fetch'))
+    process.exit(1)
+  }
+
+  const validRole = ROLES.find(r => r.key === cache.role)
+  if (!validRole) {
+    console.error(chalk.red(`✗ 缓存中的工种 "${cache.role}" 无效，请重新运行 fetch`))
+    process.exit(1)
+  }
+
+  if (cache.repos.length === 0) {
+    console.error(chalk.red('✗ 缓存中没有仓库数据，请先运行 fetch 并选择至少一个仓库'))
     process.exit(1)
   }
 

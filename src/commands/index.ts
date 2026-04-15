@@ -15,9 +15,9 @@ export function registerCommands(program: Command): void {
       await runInterview(opts)
       console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━')
       console.log('  完成！输出文件：')
-      console.log('  📄 resume.md')
-      console.log('  📄 resume.pdf')
-      console.log('  📋 interview-prep.md')
+      console.log('  - resume.md')
+      console.log('  - resume.pdf')
+      console.log('  - interview-prep.md')
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━\n')
     })
 

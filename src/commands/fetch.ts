@@ -53,18 +53,22 @@ export async function runFetch(options: { output?: string }) {
     }
   }
 
-  if (!pdfPath || existingExperience.length === 0) {
-    console.log('请手动输入个人信息：')
-    profile = await askUserProfile()
-  }
+  profile = await askUserProfile()
 
   // Step 3: GitHub data
   const { token, username, org } = await askGitHubCredentials()
   const octokit = createGitHubClient(token)
 
   const listSpinner = ora('拉取仓库列表...').start()
-  const allRepos = await listOrgRepos(octokit, org, username)
-  listSpinner.succeed(`找到 ${allRepos.length} 个仓库`)
+  let allRepos: { name: string; language: string | null }[] = []
+  try {
+    allRepos = await listOrgRepos(octokit, org, username)
+    listSpinner.succeed(`找到 ${allRepos.length} 个仓库`)
+  } catch (err) {
+    listSpinner.fail('拉取仓库列表失败')
+    console.error((err as Error).message)
+    process.exit(1)
+  }
 
   const selectedNames = await askRepoSelection(allRepos)
 
@@ -72,16 +76,11 @@ export async function runFetch(options: { output?: string }) {
   const repoMeta: Record<string, { company: string; period: string }> = {}
   for (const repoName of selectedNames) {
     console.log(chalk.dim(`\n配置仓库：${repoName}`))
-    const { company: c } = await inquirer.prompt([{
-      type: 'input', name: 'company',
-      message: `  所属公司（如 即刻 iftechio）:`,
-      default: org,
-    }])
-    const { period: p } = await inquirer.prompt([{
-      type: 'input', name: 'period',
-      message: `  在职时间（如 2024.5 - 至今）:`,
-    }])
-    repoMeta[repoName] = { company: (c as string).trim(), period: (p as string).trim() }
+    const { company: c, period: p } = await inquirer.prompt([
+      { type: 'input', name: 'company', message: `  所属公司（如 即刻 iftechio）:`, default: org },
+      { type: 'input', name: 'period', message: `  在职时间（如 2024.5 - 至今）:` },
+    ])
+    repoMeta[repoName] = { company: c.trim(), period: p.trim() }
   }
 
   const fetchSpinner = ora('拉取 PR 数据...').start()

@@ -11,7 +11,12 @@ export async function readCache(dir = '.'): Promise<Cache | null> {
   const path = getCachePath(dir)
   if (!existsSync(path)) return null
   const raw = await readFile(path, 'utf-8')
-  return JSON.parse(raw) as Cache
+  try {
+    return JSON.parse(raw) as Cache
+  } catch {
+    console.warn('⚠ 缓存文件损坏，将重新开始')
+    return null
+  }
 }
 
 export async function writeCache(data: Cache, dir = '.'): Promise<void> {

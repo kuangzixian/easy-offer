@@ -39,12 +39,16 @@ export async function runInterview(options: { output?: string }) {
     console.log('请粘贴 JD 内容，输入完成后单独一行输入 END 并回车：')
     const lines: string[] = []
     const rl = (await import('readline')).createInterface({ input: process.stdin })
-    await new Promise<void>(resolveP => {
-      rl.on('line', line => {
-        if (line.trim() === 'END') { rl.close(); resolveP() }
-        else lines.push(line)
+    try {
+      await new Promise<void>(resolveP => {
+        rl.on('line', line => {
+          if (line.trim() === 'END') { resolveP() }
+          else lines.push(line)
+        })
       })
-    })
+    } finally {
+      rl.close()
+    }
     jd = lines.join('\n')
   } else {
     console.log(chalk.blue('✦ 使用步骤 0 已记录的 JD，直接生成面试准备计划'))
@@ -59,5 +63,6 @@ export async function runInterview(options: { output?: string }) {
     spinner.succeed('interview-prep.md 已生成')
   } catch (err) {
     spinner.fail(`面试准备计划生成失败: ${(err as Error).message}`)
+    return
   }
 }
