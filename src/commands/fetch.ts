@@ -15,7 +15,7 @@ export async function runFetch(options: { output?: string }) {
   const outputDir = options.output ?? '.'
 
   console.log(chalk.bold('\n━━━━━━━━━━━━━━━━━━━━━━━━━━'))
-  console.log(chalk.bold('  github-resume-gen v1.0'))
+  console.log(chalk.bold('  easy-offer v1.0'))
   console.log(chalk.bold('━━━━━━━━━━━━━━━━━━━━━━━━━━\n'))
 
   // Step 0: Target position + JD

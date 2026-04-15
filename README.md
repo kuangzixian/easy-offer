@@ -1,4 +1,4 @@
-# github-resume-gen
+# easy-offer
 
 Generate a tailored resume from your GitHub commit history using Claude AI.
 
@@ -20,21 +20,21 @@ Generate a tailored resume from your GitHub commit history using Claude AI.
 ## Usage
 
 ```bash
-npx github-resume-gen
+npx easy-offer
 ```
 
 Or install globally:
 ```bash
-npm install -g github-resume-gen
-github-resume-gen
+npm install -g easy-offer
+easy-offer
 ```
 
 ### Subcommands
 
 ```bash
-github-resume-gen fetch     # Step 1: fetch GitHub data → cache
-github-resume-gen build     # Step 2: generate resume from cache
-github-resume-gen interview # Step 3: generate interview prep plan
+easy-offer fetch     # Step 1: fetch GitHub data → cache
+easy-offer build     # Step 2: generate resume from cache
+easy-offer interview # Step 3: generate interview prep plan
 ```
 
 ### Options

@@ -1,9 +1,9 @@
 {
-  "name": "github-resume-gen",
+  "name": "easy-offer",
   "version": "1.0.0",
-  "description": "Generate a tailored resume from your GitHub commit history using Claude AI",
+  "description": "Generate a tailored resume and interview prep plan from your GitHub history using Claude AI",
   "bin": {
-    "github-resume-gen": "./dist/cli.js"
+    "easy-offer": "./dist/cli.js"
   },
   "scripts": {
     "dev": "tsx cli.ts",
@@ -36,7 +36,7 @@
   "keywords": ["resume", "github", "cli", "claude", "ai", "career"],
   "repository": {
     "type": "git",
-    "url": "https://github.com/kuangzixian/github-resume-gen"
+    "url": "https://github.com/kuangzixian/easy-offer"
   },
   "license": "MIT"
 }
