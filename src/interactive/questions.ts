@@ -1,5 +1,8 @@
 import inquirer from 'inquirer'
+import ora from 'ora'
+import chalk from 'chalk'
 import { ROLES } from '../config.js'
+import { extractJDFromImage } from '../ocr/vision.js'
 import type { RoleKey, WorkExperience, UserProfile } from '../types.js'
 
 export async function askTargetPosition(): Promise<{ position: string; jd: string | null }> {
@@ -11,15 +14,54 @@ export async function askTargetPosition(): Promise<{ position: string; jd: strin
 
   if (!position.trim()) return { position: '', jd: null }
 
-  const { wantJD } = await inquirer.prompt([{
-    type: 'confirm',
-    name: 'wantJD',
-    message: '是否粘贴 JD 内容？（有 JD 简历会更有针对性）',
-    default: true,
+  const { jdMethod } = await inquirer.prompt([{
+    type: 'list',
+    name: 'jdMethod',
+    message: '是否提供 JD？',
+    choices: [
+      { name: '提供截图路径（Claude Vision OCR）', value: 'ocr' },
+      { name: '手动粘贴文字', value: 'manual' },
+      { name: '跳过', value: 'skip' },
+    ],
   }])
 
-  if (!wantJD) return { position: position.trim(), jd: null }
+  if (jdMethod === 'skip') return { position: position.trim(), jd: null }
 
+  if (jdMethod === 'ocr') {
+    const { imgPath } = await inquirer.prompt([{
+      type: 'input',
+      name: 'imgPath',
+      message: '请输入截图文件路径（支持 JPEG/PNG/GIF/WEBP）:',
+    }])
+
+    const spinner = ora('正在识别图片...').start()
+    try {
+      const extracted = await extractJDFromImage(imgPath.trim())
+      spinner.succeed('识别完成')
+
+      // Show preview: first 3 non-empty lines
+      const preview = extracted.split('\n').filter(l => l.trim()).slice(0, 3).join('\n')
+      console.log(chalk.dim('\n识别结果预览：\n' + preview + '\n'))
+
+      const { confirmed } = await inquirer.prompt([{
+        type: 'confirm',
+        name: 'confirmed',
+        message: '识别结果是否正确？',
+        default: true,
+      }])
+
+      if (confirmed) return { position: position.trim(), jd: extracted }
+
+      console.log(chalk.yellow('请改用手动粘贴'))
+      // fall through to manual paste below
+    } catch (err) {
+      spinner.fail((err as Error).message)
+      console.log(chalk.yellow('将改为手动粘贴'))
+      // fall through to manual paste below
+    }
+  }
+
+  // Manual paste (option 2, or fallback from OCR)
   console.log('请粘贴 JD 内容，输入完成后单独一行输入 END 并回车：')
   const lines: string[] = []
   const rl = (await import('readline')).createInterface({ input: process.stdin })
@@ -30,7 +72,8 @@ export async function askTargetPosition(): Promise<{ position: string; jd: strin
     })
   })
 
-  return { position: position.trim(), jd: lines.join('\n') }
+  const jdText = lines.join('\n').trim()
+  return { position: position.trim(), jd: jdText || null }
 }
 
 export async function askRole(inferredRole?: RoleKey): Promise<RoleKey> {
