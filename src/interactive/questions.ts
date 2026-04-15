@@ -1,4 +1,5 @@
 import inquirer from 'inquirer'
+import { execSync } from 'child_process'
 import ora from 'ora'
 import chalk from 'chalk'
 import { ROLES } from '../config.js'
@@ -128,28 +129,51 @@ export async function askUserProfile(): Promise<UserProfile> {
   ])
 }
 
-export async function askGitHubCredentials(): Promise<{ token: string; username: string; org: string }> {
-  const token = process.env.GITHUB_TOKEN
-  const result: Record<string, string> = {}
+function getGhCliToken(): { token: string; username: string } | null {
+  try {
+    const token = execSync('gh auth token', { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim()
+    if (!token) return null
+    const username = execSync('gh api user --jq \'.login\'', { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim()
+    return { token, username }
+  } catch {
+    return null
+  }
+}
 
-  if (!token) {
-    const { t } = await inquirer.prompt([{
-      type: 'password',
-      name: 't',
-      message: 'GitHub Personal Access Token:',
-    }])
-    result.token = t
-  } else {
-    result.token = token
+export async function askGitHubCredentials(): Promise<{ token: string; username: string; org: string }> {
+  let token = ''
+  let detectedUsername = ''
+
+  if (process.env.GITHUB_TOKEN) {
+    token = process.env.GITHUB_TOKEN
     console.log('✓ 使用环境变量 GITHUB_TOKEN')
+  } else {
+    const ghCli = getGhCliToken()
+    if (ghCli) {
+      token = ghCli.token
+      detectedUsername = ghCli.username
+      console.log(`✓ 使用 gh CLI 凭证（${detectedUsername}）`)
+    } else {
+      const { t } = await inquirer.prompt([{
+        type: 'password',
+        name: 't',
+        message: 'GitHub Personal Access Token:',
+      }])
+      token = t
+    }
   }
 
-  const rest = await inquirer.prompt([
-    { type: 'input', name: 'username', message: 'GitHub 用户名:' },
-    { type: 'input', name: 'org', message: '所属组织 (org):' },
-  ])
+  const questions: any[] = []
+  if (!detectedUsername) {
+    questions.push({ type: 'input', name: 'username', message: 'GitHub 用户名:' })
+  }
+  questions.push({ type: 'input', name: 'org', message: '所属组织 (org，无则回车跳过):' })
 
-  return { token: result.token, ...rest }
+  const answers = await inquirer.prompt(questions)
+  const username = detectedUsername || answers.username
+  const org = answers.org?.trim() || username  // default org to username if blank
+
+  return { token, username, org }
 }
 
 export async function askRepoSelection(
