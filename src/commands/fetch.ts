@@ -2,7 +2,7 @@ import ora from 'ora'
 import chalk from 'chalk'
 import inquirer from 'inquirer'
 import { createGitHubClient, listOrgRepos, buildRepoData } from '../github/client.js'
-import { extractTextFromPDF, parseWorkExperience, parseEducation } from '../pdf/reader.js'
+import { extractTextFromPDF, parsePDFWithClaude } from '../pdf/reader.js'
 import {
   askTargetPosition, askRole, askPDFPath, askUserProfile,
   askGitHubCredentials, askRepoSelection, confirmWorkHistory,
@@ -44,8 +44,11 @@ export async function runFetch(options: { output?: string }) {
     const spinner = ora('解析 PDF...').start()
     try {
       const text = await extractTextFromPDF(pdfPath)
-      existingExperience = parseWorkExperience(text)
-      education = parseEducation(text)
+      spinner.text = '用 Claude 解析简历内容...'
+      const parsed = await parsePDFWithClaude(text)
+      existingExperience = parsed.workExperience
+      education = parsed.education
+      profile = parsed.profile
       spinner.succeed(`解析成功，检测到 ${existingExperience.length} 段工作经历`)
       existingExperience = await confirmWorkHistory(existingExperience)
     } catch {
@@ -53,7 +56,7 @@ export async function runFetch(options: { output?: string }) {
     }
   }
 
-  profile = await askUserProfile()
+  profile = await askUserProfile(profile)
 
   // Step 3: GitHub data
   const { token, username, org } = await askGitHubCredentials()

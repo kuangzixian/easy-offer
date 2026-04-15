@@ -120,12 +120,12 @@ export async function askPDFPath(): Promise<string> {
   return path.trim()
 }
 
-export async function askUserProfile(): Promise<UserProfile> {
+export async function askUserProfile(defaults: Partial<UserProfile> = {}): Promise<UserProfile> {
   return inquirer.prompt([
-    { type: 'input', name: 'name', message: '姓名:' },
-    { type: 'input', name: 'phone', message: '手机号:' },
-    { type: 'input', name: 'email', message: '邮箱:' },
-    { type: 'input', name: 'github', message: 'GitHub 用户名（可选）:' },
+    { type: 'input', name: 'name', message: '姓名:', default: defaults.name },
+    { type: 'input', name: 'phone', message: '手机号:', default: defaults.phone },
+    { type: 'input', name: 'email', message: '邮箱:', default: defaults.email },
+    { type: 'input', name: 'github', message: 'GitHub 用户名（可选）:', default: defaults.github },
   ])
 }
 
