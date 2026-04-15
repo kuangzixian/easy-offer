@@ -8,13 +8,14 @@ Generate a tailored resume from your GitHub commit history using Claude AI.
 - Fetches your GitHub PRs interactively
 - Uses Claude to generate professional resume descriptions (problem-solution-result format)
 - Tailors resume to a specific JD if provided
+- Supports JD input via screenshot (Claude Vision OCR) or manual text paste
 - Outputs `resume.md` + `resume.pdf`
 - Generates `interview-prep.md` with predicted interview questions
 
 ## Prerequisites
 
 - Node.js 18+
-- `ANTHROPIC_API_KEY` environment variable
+- `ANTHROPIC_API_KEY` environment variable (required for resume generation and JD screenshot OCR)
 - GitHub Personal Access Token (with `repo` scope)
 
 ## Usage
@@ -53,7 +54,7 @@ easy-offer interview # Step 3: generate interview prep plan
 
 ## How it works
 
-1. **Step 0** (optional): Enter your target job position and paste the JD. When provided, the resume will be tailored to match JD keywords.
+1. **Step 0** (optional): Enter your target job position and provide the JD — either as a screenshot (OCR via Claude Vision) or by pasting text. When provided, the resume will be tailored to match JD keywords. Note: OCR uses the Claude API and consumes tokens.
 2. **Step 1**: Select your target role type (Go backend, Node.js, AI/Agent, etc.)
 3. **Step 2**: Provide your existing PDF resume path to extract work history
 4. **Step 3**: Authenticate with GitHub and select repos to include
