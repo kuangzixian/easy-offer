@@ -1,5 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 
+export const CLAUDE_MODEL = 'claude-sonnet-4-6'
+
 let client: Anthropic | null = null
 
 export function getAnthropicClient(): Anthropic {
@@ -22,7 +24,7 @@ export async function callClaude(
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       const response = await anthropic.messages.create({
-        model: 'claude-sonnet-4-6',
+        model: CLAUDE_MODEL,
         max_tokens: maxTokens,
         system,
         messages: [{ role: 'user', content: user }],

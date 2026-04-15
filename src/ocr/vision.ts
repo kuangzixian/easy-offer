@@ -1,6 +1,6 @@
-import * as fs from 'fs'
+import { access, readFile } from 'fs/promises'
 import * as path from 'path'
-import { getAnthropicClient } from '../ai/client.js'
+import { getAnthropicClient, CLAUDE_MODEL } from '../ai/client.js'
 
 type ImageMediaType = 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'
 
@@ -13,7 +13,9 @@ const EXT_TO_MEDIA_TYPE: Record<string, ImageMediaType> = {
 }
 
 export async function extractJDFromImage(imagePath: string): Promise<string> {
-  if (!fs.existsSync(imagePath)) {
+  try {
+    await access(imagePath)
+  } catch {
     throw new Error(`文件不存在: ${imagePath}`)
   }
 
@@ -23,13 +25,13 @@ export async function extractJDFromImage(imagePath: string): Promise<string> {
     throw new Error('不支持的图片格式，支持: JPEG、PNG、GIF、WEBP')
   }
 
-  const imageData = fs.readFileSync(imagePath)
+  const imageData = await readFile(imagePath)
   const base64 = imageData.toString('base64')
 
   const anthropic = getAnthropicClient()
   const response = await anthropic.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 4096,
+    model: CLAUDE_MODEL,
+    max_tokens: 2000,
     messages: [{
       role: 'user',
       content: [
@@ -46,6 +48,6 @@ export async function extractJDFromImage(imagePath: string): Promise<string> {
   })
 
   const block = response.content[0]
-  if (block.type !== 'text') throw new Error('Unexpected response type from Claude Vision')
+  if (block.type !== 'text') throw new Error('Claude Vision 返回了非文本响应')
   return block.text
 }

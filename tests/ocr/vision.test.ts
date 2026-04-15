@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import * as fs from 'fs'
+import * as fsPromises from 'fs/promises'
 
-// Mock fs and the AI client before importing the module under test
-vi.mock('fs')
+// Mock fs/promises and the AI client before importing the module under test
+vi.mock('fs/promises')
 vi.mock('../../src/ai/client.js', () => ({
   getAnthropicClient: vi.fn(),
+  CLAUDE_MODEL: 'claude-sonnet-4-6',
 }))
 
 import { extractJDFromImage } from '../../src/ocr/vision.js'
@@ -14,52 +15,42 @@ describe('extractJDFromImage', () => {
   beforeEach(() => { vi.clearAllMocks() })
 
   it('throws when file does not exist', async () => {
-    vi.mocked(fs.existsSync).mockReturnValue(false)
+    vi.mocked(fsPromises.access).mockRejectedValue(new Error('ENOENT'))
     await expect(extractJDFromImage('/tmp/nope.png'))
       .rejects.toThrow('文件不存在')
   })
 
   it('throws for unsupported extension', async () => {
-    vi.mocked(fs.existsSync).mockReturnValue(true)
+    vi.mocked(fsPromises.access).mockResolvedValue(undefined)
     await expect(extractJDFromImage('/tmp/jd.bmp'))
       .rejects.toThrow('不支持的图片格式')
   })
 
-  it('sends correct media_type for .jpg', async () => {
-    vi.mocked(fs.existsSync).mockReturnValue(true)
-    vi.mocked(fs.readFileSync).mockReturnValue(Buffer.from('imgdata') as any)
+  it.each([
+    ['.jpg',  'image/jpeg'],
+    ['.jpeg', 'image/jpeg'],
+    ['.png',  'image/png'],
+    ['.gif',  'image/gif'],
+    ['.webp', 'image/webp'],
+  ])('sends correct media_type for %s', async (ext, expectedType) => {
+    vi.mocked(fsPromises.access).mockResolvedValue(undefined)
+    vi.mocked(fsPromises.readFile).mockResolvedValue(Buffer.from('imgdata') as any)
 
     const mockCreate = vi.fn().mockResolvedValue({
-      content: [{ type: 'text', text: '前端工程师 3年经验' }],
+      content: [{ type: 'text', text: 'jd text' }],
     })
     vi.mocked(getAnthropicClient).mockReturnValue({ messages: { create: mockCreate } } as any)
 
-    await extractJDFromImage('/tmp/jd.jpg')
+    await extractJDFromImage(`/tmp/jd${ext}`)
 
     const call = mockCreate.mock.calls[0][0]
-    const imageBlock = call.messages[0].content[0]
-    expect(imageBlock.source.media_type).toBe('image/jpeg')
-  })
-
-  it('sends correct media_type for .png', async () => {
-    vi.mocked(fs.existsSync).mockReturnValue(true)
-    vi.mocked(fs.readFileSync).mockReturnValue(Buffer.from('imgdata') as any)
-
-    const mockCreate = vi.fn().mockResolvedValue({
-      content: [{ type: 'text', text: 'some jd text' }],
-    })
-    vi.mocked(getAnthropicClient).mockReturnValue({ messages: { create: mockCreate } } as any)
-
-    await extractJDFromImage('/tmp/jd.png')
-
-    const call = mockCreate.mock.calls[0][0]
-    expect(call.messages[0].content[0].source.media_type).toBe('image/png')
+    expect(call.messages[0].content[0].source.media_type).toBe(expectedType)
   })
 
   it('encodes file as base64 in request', async () => {
-    vi.mocked(fs.existsSync).mockReturnValue(true)
+    vi.mocked(fsPromises.access).mockResolvedValue(undefined)
     const fakeBytes = Buffer.from('hello')
-    vi.mocked(fs.readFileSync).mockReturnValue(fakeBytes as any)
+    vi.mocked(fsPromises.readFile).mockResolvedValue(fakeBytes as any)
 
     const mockCreate = vi.fn().mockResolvedValue({
       content: [{ type: 'text', text: 'result' }],
@@ -73,8 +64,8 @@ describe('extractJDFromImage', () => {
   })
 
   it('returns extracted text from Claude response', async () => {
-    vi.mocked(fs.existsSync).mockReturnValue(true)
-    vi.mocked(fs.readFileSync).mockReturnValue(Buffer.from('x') as any)
+    vi.mocked(fsPromises.access).mockResolvedValue(undefined)
+    vi.mocked(fsPromises.readFile).mockResolvedValue(Buffer.from('x') as any)
 
     const mockCreate = vi.fn().mockResolvedValue({
       content: [{ type: 'text', text: '我们在找一位 Go 工程师' }],
@@ -86,8 +77,8 @@ describe('extractJDFromImage', () => {
   })
 
   it('throws on API failure', async () => {
-    vi.mocked(fs.existsSync).mockReturnValue(true)
-    vi.mocked(fs.readFileSync).mockReturnValue(Buffer.from('x') as any)
+    vi.mocked(fsPromises.access).mockResolvedValue(undefined)
+    vi.mocked(fsPromises.readFile).mockResolvedValue(Buffer.from('x') as any)
 
     const mockCreate = vi.fn().mockRejectedValue(new Error('API timeout'))
     vi.mocked(getAnthropicClient).mockReturnValue({ messages: { create: mockCreate } } as any)
