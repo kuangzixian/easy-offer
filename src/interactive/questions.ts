@@ -69,10 +69,15 @@ export async function askTargetPosition(): Promise<{ position: string; jd: strin
   const rl = createInterface({ input: process.stdin })
   try {
     await new Promise<void>(resolveP => {
-      rl.on('line', line => {
-        if (line.trim() === 'END') { resolveP() }
-        else lines.push(line)
-      })
+      const onLine = (line: string) => {
+        if (line.trim() === 'END') {
+          rl.removeListener('line', onLine)
+          resolveP()
+        } else {
+          lines.push(line)
+        }
+      }
+      rl.on('line', onLine)
       rl.once('close', resolveP)
     })
   } finally {
