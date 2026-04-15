@@ -32,6 +32,7 @@ export async function askTargetPosition(): Promise<{ position: string; jd: strin
       type: 'input',
       name: 'imgPath',
       message: '请输入截图文件路径（支持 JPEG/PNG/GIF/WEBP）:',
+      validate: (v: string) => v.trim().length > 0 || '路径不能为空',
     }])
 
     const spinner = ora('正在识别图片...').start()
@@ -55,7 +56,7 @@ export async function askTargetPosition(): Promise<{ position: string; jd: strin
       console.log(chalk.yellow('请改用手动粘贴'))
       // fall through to manual paste below
     } catch (err) {
-      spinner.fail((err as Error).message)
+      spinner.fail(err instanceof Error ? err.message : String(err))
       console.log(chalk.yellow('将改为手动粘贴'))
       // fall through to manual paste below
     }
@@ -64,13 +65,19 @@ export async function askTargetPosition(): Promise<{ position: string; jd: strin
   // Manual paste (option 2, or fallback from OCR)
   console.log('请粘贴 JD 内容，输入完成后单独一行输入 END 并回车：')
   const lines: string[] = []
-  const rl = (await import('readline')).createInterface({ input: process.stdin })
-  await new Promise<void>(resolve => {
-    rl.on('line', line => {
-      if (line.trim() === 'END') { rl.close(); resolve() }
-      else lines.push(line)
+  const { createInterface } = await import('readline')
+  const rl = createInterface({ input: process.stdin })
+  try {
+    await new Promise<void>(resolveP => {
+      rl.on('line', line => {
+        if (line.trim() === 'END') { resolveP() }
+        else lines.push(line)
+      })
+      rl.once('close', resolveP)
     })
-  })
+  } finally {
+    rl.close()
+  }
 
   const jdText = lines.join('\n').trim()
   return { position: position.trim(), jd: jdText || null }
