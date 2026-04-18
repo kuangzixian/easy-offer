@@ -2,6 +2,7 @@ import type { Command } from 'commander'
 import { runFetch } from './fetch.js'
 import { runBuild } from './build.js'
 import { runInterview } from './interview.js'
+import { runConfig } from './config.js'
 
 export function registerCommands(program: Command): void {
   // Main interactive flow: runs all steps
@@ -39,4 +40,9 @@ export function registerCommands(program: Command): void {
     .description('Generate interview-prep.md from resume.md and JD')
     .option('-o, --output <dir>', 'Output directory', '.')
     .action(runInterview)
+
+  program
+    .command('config')
+    .description('Configure or reconfigure the LLM (baseURL / apiKey / model)')
+    .action(runConfig)
 }
