@@ -3,7 +3,7 @@ import { resolve } from 'path'
 import ora from 'ora'
 import chalk from 'chalk'
 import { readCache } from '../cache.js'
-import { callClaude } from '../ai/client.js'
+import { callLLM } from '../ai/client.js'
 import { buildResumePrompt } from '../ai/prompt.js'
 import { markdownToPDF } from '../pdf/writer.js'
 import { ROLES } from '../config.js'
@@ -41,7 +41,7 @@ export async function runBuild(options: { output?: string; noPdf?: boolean }) {
     const spinner = ora(`Claude 正在分析 ${repo.name}...`).start()
     try {
       const { system, user } = buildResumePrompt(repo, cache.role as RoleKey, cache.jd)
-      const result = await callClaude(system, user)
+      const result = await callLLM(system, user)
       sections.push(result)
       spinner.succeed(`${repo.name} 完成`)
     } catch (err) {

@@ -5,7 +5,7 @@ import ora from 'ora'
 import chalk from 'chalk'
 import inquirer from 'inquirer'
 import { readCache } from '../cache.js'
-import { callClaude } from '../ai/client.js'
+import { callLLM } from '../ai/client.js'
 import { buildInterviewPrompt } from '../ai/prompt.js'
 
 export async function runInterview(options: { output?: string }) {
@@ -57,7 +57,7 @@ export async function runInterview(options: { output?: string }) {
   const spinner = ora('Claude 正在分析岗位匹配度...').start()
   try {
     const prompt = buildInterviewPrompt(resumeContent, jd)
-    const result = await callClaude('你是一位资深技术面试辅导专家。', prompt, 4000)
+    const result = await callLLM('你是一位资深技术面试辅导专家。', prompt, 4000)
     const outPath = resolve(outputDir, 'interview-prep.md')
     await writeFile(outPath, result, 'utf-8')
     spinner.succeed('interview-prep.md 已生成')

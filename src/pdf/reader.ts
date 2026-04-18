@@ -1,6 +1,6 @@
 import pdfParse from 'pdf-parse'
 import { readFile } from 'fs/promises'
-import { callClaude } from '../ai/client.js'
+import { callLLM } from '../ai/client.js'
 import type { WorkExperience, UserProfile } from '../types.js'
 
 export async function extractTextFromPDF(pdfPath: string): Promise<string> {
@@ -40,7 +40,7 @@ export async function parsePDFWithClaude(text: string): Promise<ParsedResume> {
 简历文本：
 ${text}`
 
-  const raw = await callClaude(system, user, 2000)
+  const raw = await callLLM(system, user, 2000)
 
   // Extract JSON from response (Claude may wrap in markdown code blocks)
   const jsonMatch = raw.match(/\{[\s\S]*\}/)

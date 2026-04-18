@@ -3,10 +3,10 @@ import { parsePDFWithClaude } from '../../src/pdf/reader.js'
 
 // Mock the AI client so tests don't make real API calls
 vi.mock('../../src/ai/client.js', () => ({
-  callClaude: vi.fn(),
+  callLLM: vi.fn(),
 }))
 
-import { callClaude } from '../../src/ai/client.js'
+import { callLLM } from '../../src/ai/client.js'
 
 const sampleText = `
 匡俊钢
@@ -37,7 +37,7 @@ const mockClaudeResponse = JSON.stringify({
 })
 
 beforeEach(() => {
-  vi.mocked(callClaude).mockResolvedValue(mockClaudeResponse)
+  vi.mocked(callLLM).mockResolvedValue(mockClaudeResponse)
 })
 
 describe('parsePDFWithClaude', () => {
@@ -66,13 +66,13 @@ describe('parsePDFWithClaude', () => {
   })
 
   it('handles Claude response wrapped in markdown code block', async () => {
-    vi.mocked(callClaude).mockResolvedValue('```json\n' + mockClaudeResponse + '\n```')
+    vi.mocked(callLLM).mockResolvedValue('```json\n' + mockClaudeResponse + '\n```')
     const result = await parsePDFWithClaude(sampleText)
     expect(result.workExperience).toHaveLength(3)
   })
 
   it('throws when Claude returns no valid JSON', async () => {
-    vi.mocked(callClaude).mockResolvedValue('抱歉，无法解析该简历。')
+    vi.mocked(callLLM).mockResolvedValue('抱歉，无法解析该简历。')
     await expect(parsePDFWithClaude(sampleText)).rejects.toThrow('Claude 未返回有效 JSON')
   })
 })

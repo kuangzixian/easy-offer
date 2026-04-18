@@ -1,42 +1,42 @@
-import Anthropic from '@anthropic-ai/sdk'
+import OpenAI from 'openai'
+import { loadConfig } from '../config/store.js'
 
-export const CLAUDE_MODEL = 'claude-sonnet-4-6'
+let client: OpenAI | null = null
+let cachedModel: string | null = null
 
-let client: Anthropic | null = null
-
-export function getAnthropicClient(): Anthropic {
+function getClient(): { client: OpenAI; model: string } {
   if (!client) {
-    const apiKey = process.env.ANTHROPIC_API_KEY
-    if (!apiKey) throw new Error('ANTHROPIC_API_KEY environment variable is required')
-    client = new Anthropic({ apiKey })
+    const cfg = loadConfig()
+    client = new OpenAI({ baseURL: cfg.baseURL, apiKey: cfg.apiKey })
+    cachedModel = cfg.model
   }
-  return client
+  return { client, model: cachedModel! }
 }
 
-export async function callClaude(
+export async function callLLM(
   system: string,
   user: string,
   maxTokens = 2000,
 ): Promise<string> {
-  const anthropic = getAnthropicClient()
+  const { client, model } = getClient()
   let lastError: Error | null = null
-
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      const response = await anthropic.messages.create({
-        model: CLAUDE_MODEL,
+      const resp = await client.chat.completions.create({
+        model,
         max_tokens: maxTokens,
-        system,
-        messages: [{ role: 'user', content: user }],
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: user },
+        ],
       })
-      const block = response.content[0]
-      if (block.type !== 'text') throw new Error('Unexpected response type')
-      return block.text
+      const text = resp.choices[0]?.message?.content
+      if (!text) throw new Error('Empty response from LLM')
+      return text
     } catch (err) {
+      // Silent retries by design — only the final error reaches the caller.
       lastError = err as Error
-      if (attempt < 3) {
-        await new Promise(r => setTimeout(r, 1000 * attempt))
-      }
+      if (attempt < 3) await new Promise(r => setTimeout(r, 1000 * attempt))
     }
   }
   throw lastError
