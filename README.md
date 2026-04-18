@@ -6,13 +6,13 @@
 
 ## English
 
-Generate a tailored resume from your GitHub commit history using Claude AI.
+Generate a tailored resume from your GitHub commit history using any OpenAI-compatible LLM.
 
 ### Features
 
 - Parses existing PDF resume to extract work history
 - Fetches your GitHub PRs interactively
-- Uses Claude to generate professional resume descriptions (problem-solution-result format)
+- Uses an LLM to generate professional resume descriptions (problem-solution-result format)
 - Tailors resume to a specific JD if provided
 - Supports JD input via screenshot (local OCR via tesseract.js, with editor-based proofreading) or manual text paste
 - Outputs `resume.md` + `resume.pdf`
@@ -67,7 +67,7 @@ easy-offer interview # Step 3: generate interview prep plan
 2. **Step 1**: Select your target role type (Go backend, Node.js, AI/Agent, etc.)
 3. **Step 2**: Provide your existing PDF resume path to extract work history
 4. **Step 3**: Authenticate with GitHub and select repos to include
-5. **Step 4**: Claude analyzes each repo's PR history and generates professional resume sections
+5. **Step 4**: The LLM analyzes each repo's PR history and generates professional resume sections
 6. **Step 5** (optional): Generate an interview prep plan with predicted questions
 
 ### Output files
@@ -87,13 +87,13 @@ MIT
 
 ## 中文
 
-基于你的 GitHub commit 历史，用 Claude AI 自动生成定制化简历。
+基于你的 GitHub commit 历史，用任意 OpenAI 兼容大模型自动生成定制化简历。
 
 ### 功能特性
 
 - 解析现有 PDF 简历，提取工作经历
 - 交互式拉取你的 GitHub PR 数据
-- 用 Claude 生成专业简历描述（问题-方案-结果格式）
+- 用大模型生成专业简历描述（问题-方案-结果格式）
 - 支持针对特定 JD 定制简历内容
 - JD 输入支持截图（本地 OCR，基于 tesseract.js，识别后在编辑器中二次校对）或手动粘贴文字
 - 输出 `resume.md` + `resume.pdf`
@@ -148,7 +148,7 @@ easy-offer interview # 第三步：生成面试准备计划
 2. **第 1 步**：选择目标工种（Go 后端、Node.js、AI/Agent 等）
 3. **第 2 步**：提供现有 PDF 简历路径，提取工作经历
 4. **第 3 步**：GitHub 授权，选择要纳入简历的仓库
-5. **第 4 步**：Claude 分析各仓库的 PR 历史，生成专业简历内容
+5. **第 4 步**：大模型分析各仓库的 PR 历史，生成专业简历内容
 6. **第 5 步**（可选）：生成面试准备计划，包含预测面试题
 
 ### 输出文件

@@ -38,7 +38,7 @@ export async function runBuild(options: { output?: string; noPdf?: boolean }) {
   const failed: string[] = []
 
   for (const repo of cache.repos) {
-    const spinner = ora(`Claude 正在分析 ${repo.name}...`).start()
+    const spinner = ora(`大模型正在分析 ${repo.name}...`).start()
     try {
       const { system, user } = buildResumePrompt(repo, cache.role as RoleKey, cache.jd)
       const result = await callLLM(system, user)

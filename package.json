@@ -1,7 +1,7 @@
 {
   "name": "easy-offer",
   "version": "1.0.0",
-  "description": "Generate a tailored resume and interview prep plan from your GitHub history using Claude AI",
+  "description": "Generate a tailored resume and interview prep plan from your GitHub history using any OpenAI-compatible LLM",
   "bin": {
     "easy-offer": "./dist/cli.js"
   },
@@ -42,7 +42,8 @@
     "resume",
     "github",
     "cli",
-    "claude",
+    "openai",
+    "llm",
     "ai",
     "career"
   ],

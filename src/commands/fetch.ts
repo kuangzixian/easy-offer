@@ -2,7 +2,7 @@ import ora from 'ora'
 import chalk from 'chalk'
 import inquirer from 'inquirer'
 import { createGitHubClient, listOrgRepos, buildRepoData } from '../github/client.js'
-import { extractTextFromPDF, parsePDFWithClaude } from '../pdf/reader.js'
+import { extractTextFromPDF, parsePDFWithLLM } from '../pdf/reader.js'
 import {
   askTargetPosition, askRole, askPDFPath, askUserProfile,
   askGitHubCredentials, askRepoSelection, confirmWorkHistory,
@@ -44,8 +44,8 @@ export async function runFetch(options: { output?: string }) {
     const spinner = ora('解析 PDF...').start()
     try {
       const text = await extractTextFromPDF(pdfPath)
-      spinner.text = '用 Claude 解析简历内容...'
-      const parsed = await parsePDFWithClaude(text)
+      spinner.text = '用大模型解析简历内容...'
+      const parsed = await parsePDFWithLLM(text)
       existingExperience = parsed.workExperience
       education = parsed.education
       profile = parsed.profile

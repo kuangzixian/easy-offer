@@ -54,7 +54,7 @@ export async function runInterview(options: { output?: string }) {
     console.log(chalk.blue('✦ 使用步骤 0 已记录的 JD，直接生成面试准备计划'))
   }
 
-  const spinner = ora('Claude 正在分析岗位匹配度...').start()
+  const spinner = ora('大模型正在分析岗位匹配度...').start()
   try {
     const prompt = buildInterviewPrompt(resumeContent, jd)
     const result = await callLLM('你是一位资深技术面试辅导专家。', prompt, 4000)
