@@ -1,18 +1,14 @@
-import { access, readFile } from 'fs/promises'
+import { access } from 'fs/promises'
 import * as path from 'path'
-import { getAnthropicClient, CLAUDE_MODEL } from '../ai/client.js'
+import * as os from 'os'
+import { createWorker } from 'tesseract.js'
 
-type ImageMediaType = 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'
+const SUPPORTED_EXT = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff'])
 
-const EXT_TO_MEDIA_TYPE: Record<string, ImageMediaType> = {
-  '.jpg':  'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.png':  'image/png',
-  '.gif':  'image/gif',
-  '.webp': 'image/webp',
-}
-
-export async function extractJDFromImage(imagePath: string): Promise<string> {
+export async function extractJDFromImage(
+  imagePath: string,
+  onProgress?: (pct: number) => void,
+): Promise<string> {
   try {
     await access(imagePath)
   } catch {
@@ -20,34 +16,24 @@ export async function extractJDFromImage(imagePath: string): Promise<string> {
   }
 
   const ext = path.extname(imagePath).toLowerCase()
-  const mediaType = EXT_TO_MEDIA_TYPE[ext]
-  if (!mediaType) {
-    throw new Error('不支持的图片格式，支持: JPEG、PNG、GIF、WEBP')
+  if (!SUPPORTED_EXT.has(ext)) {
+    throw new Error('不支持的图片格式，支持: JPEG/PNG/GIF/WEBP/BMP/TIFF')
   }
 
-  const imageData = await readFile(imagePath)
-  const base64 = imageData.toString('base64')
-
-  const anthropic = getAnthropicClient()
-  const response = await anthropic.messages.create({
-    model: CLAUDE_MODEL,
-    max_tokens: 2000,
-    messages: [{
-      role: 'user',
-      content: [
-        {
-          type: 'image',
-          source: { type: 'base64', media_type: mediaType, data: base64 },
-        },
-        {
-          type: 'text',
-          text: '请将图片中的招聘 JD（职位描述）文字完整提取出来，只返回纯文本，不要添加任何解释或格式。',
-        },
-      ],
-    }],
+  const cachePath = path.join(os.homedir(), '.easy-offer', 'tesseract-cache')
+  const worker = await createWorker(['chi_sim', 'eng'], 1, {
+    cachePath,
+    logger: m => {
+      if (m.status === 'recognizing text' && onProgress) {
+        onProgress(Math.round(m.progress * 100))
+      }
+    },
   })
 
-  const block = response.content[0]
-  if (block.type !== 'text') throw new Error('Claude Vision 返回了非文本响应')
-  return block.text
+  try {
+    const { data } = await worker.recognize(imagePath)
+    return data.text.trim()
+  } finally {
+    await worker.terminate()
+  }
 }

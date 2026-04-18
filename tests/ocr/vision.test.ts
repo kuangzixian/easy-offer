@@ -1,18 +1,26 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import * as fsPromises from 'fs/promises'
 
-// Mock fs/promises and the AI client before importing the module under test
 vi.mock('fs/promises')
-vi.mock('../../src/ai/client.js', () => ({
-  getAnthropicClient: vi.fn(),
-  CLAUDE_MODEL: 'claude-sonnet-4-6',
+
+const mockRecognize = vi.fn()
+const mockTerminate = vi.fn()
+const mockCreateWorker = vi.fn()
+
+vi.mock('tesseract.js', () => ({
+  createWorker: (...args: unknown[]) => mockCreateWorker(...args),
 }))
 
 import { extractJDFromImage } from '../../src/ocr/vision.js'
-import { getAnthropicClient } from '../../src/ai/client.js'
 
 describe('extractJDFromImage', () => {
-  beforeEach(() => { vi.clearAllMocks() })
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockCreateWorker.mockResolvedValue({
+      recognize: mockRecognize,
+      terminate: mockTerminate,
+    })
+  })
 
   it('throws when file does not exist', async () => {
     vi.mocked(fsPromises.access).mockRejectedValue(new Error('ENOENT'))
@@ -22,67 +30,66 @@ describe('extractJDFromImage', () => {
 
   it('throws for unsupported extension', async () => {
     vi.mocked(fsPromises.access).mockResolvedValue(undefined)
-    await expect(extractJDFromImage('/tmp/jd.bmp'))
+    await expect(extractJDFromImage('/tmp/jd.heic'))
       .rejects.toThrow('不支持的图片格式')
   })
 
-  it.each([
-    ['.jpg',  'image/jpeg'],
-    ['.jpeg', 'image/jpeg'],
-    ['.png',  'image/png'],
-    ['.gif',  'image/gif'],
-    ['.webp', 'image/webp'],
-  ])('sends correct media_type for %s', async (ext, expectedType) => {
+  it.each(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff'])(
+    'accepts %s extension',
+    async ext => {
+      vi.mocked(fsPromises.access).mockResolvedValue(undefined)
+      mockRecognize.mockResolvedValue({ data: { text: 'hello' } })
+
+      await expect(extractJDFromImage(`/tmp/jd${ext}`)).resolves.toBe('hello')
+    },
+  )
+
+  it('initializes worker with chi_sim + eng languages', async () => {
     vi.mocked(fsPromises.access).mockResolvedValue(undefined)
-    vi.mocked(fsPromises.readFile).mockResolvedValue(Buffer.from('imgdata') as any)
+    mockRecognize.mockResolvedValue({ data: { text: 'jd text' } })
 
-    const mockCreate = vi.fn().mockResolvedValue({
-      content: [{ type: 'text', text: 'jd text' }],
-    })
-    vi.mocked(getAnthropicClient).mockReturnValue({ messages: { create: mockCreate } } as any)
+    await extractJDFromImage('/tmp/jd.png')
 
-    await extractJDFromImage(`/tmp/jd${ext}`)
-
-    const call = mockCreate.mock.calls[0][0]
-    expect(call.messages[0].content[0].source.media_type).toBe(expectedType)
+    expect(mockCreateWorker).toHaveBeenCalledWith(
+      ['chi_sim', 'eng'],
+      1,
+      expect.objectContaining({ cachePath: expect.stringContaining('.easy-offer') }),
+    )
   })
 
-  it('encodes file as base64 in request', async () => {
+  it('returns trimmed text from recognize result', async () => {
     vi.mocked(fsPromises.access).mockResolvedValue(undefined)
-    const fakeBytes = Buffer.from('hello')
-    vi.mocked(fsPromises.readFile).mockResolvedValue(fakeBytes as any)
-
-    const mockCreate = vi.fn().mockResolvedValue({
-      content: [{ type: 'text', text: 'result' }],
-    })
-    vi.mocked(getAnthropicClient).mockReturnValue({ messages: { create: mockCreate } } as any)
-
-    await extractJDFromImage('/tmp/jd.webp')
-
-    const call = mockCreate.mock.calls[0][0]
-    expect(call.messages[0].content[0].source.data).toBe(fakeBytes.toString('base64'))
-  })
-
-  it('returns extracted text from Claude response', async () => {
-    vi.mocked(fsPromises.access).mockResolvedValue(undefined)
-    vi.mocked(fsPromises.readFile).mockResolvedValue(Buffer.from('x') as any)
-
-    const mockCreate = vi.fn().mockResolvedValue({
-      content: [{ type: 'text', text: '我们在找一位 Go 工程师' }],
-    })
-    vi.mocked(getAnthropicClient).mockReturnValue({ messages: { create: mockCreate } } as any)
+    mockRecognize.mockResolvedValue({ data: { text: '  我们在找一位 Go 工程师  \n' } })
 
     const result = await extractJDFromImage('/tmp/jd.gif')
     expect(result).toBe('我们在找一位 Go 工程师')
   })
 
-  it('throws on API failure', async () => {
+  it('terminates worker even when recognize fails', async () => {
     vi.mocked(fsPromises.access).mockResolvedValue(undefined)
-    vi.mocked(fsPromises.readFile).mockResolvedValue(Buffer.from('x') as any)
+    mockRecognize.mockRejectedValue(new Error('OCR failed'))
 
-    const mockCreate = vi.fn().mockRejectedValue(new Error('API timeout'))
-    vi.mocked(getAnthropicClient).mockReturnValue({ messages: { create: mockCreate } } as any)
+    await expect(extractJDFromImage('/tmp/jd.png')).rejects.toThrow('OCR failed')
+    expect(mockTerminate).toHaveBeenCalled()
+  })
 
-    await expect(extractJDFromImage('/tmp/jd.png')).rejects.toThrow('API timeout')
+  it('reports progress via callback during recognition', async () => {
+    vi.mocked(fsPromises.access).mockResolvedValue(undefined)
+    mockRecognize.mockResolvedValue({ data: { text: 'x' } })
+
+    const progress: number[] = []
+    let capturedLogger: ((m: { status: string; progress: number }) => void) | undefined
+    mockCreateWorker.mockImplementationOnce((_langs, _oem, opts: any) => {
+      capturedLogger = opts?.logger
+      return Promise.resolve({ recognize: mockRecognize, terminate: mockTerminate })
+    })
+
+    await extractJDFromImage('/tmp/jd.png', pct => progress.push(pct))
+
+    capturedLogger?.({ status: 'recognizing text', progress: 0.5 })
+    capturedLogger?.({ status: 'loading tesseract core', progress: 0.1 })
+    capturedLogger?.({ status: 'recognizing text', progress: 1 })
+
+    expect(progress).toEqual([50, 100])
   })
 })

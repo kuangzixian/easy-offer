@@ -14,13 +14,14 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.40.0",
     "@octokit/rest": "^21.0.0",
+    "chalk": "^5.0.0",
     "commander": "^12.0.0",
     "inquirer": "^9.0.0",
     "marked": "^12.0.0",
     "ora": "^8.0.0",
     "pdf-parse": "^1.1.1",
     "puppeteer": "^22.0.0",
-    "chalk": "^5.0.0"
+    "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
     "@types/inquirer": "^9.0.0",
@@ -31,9 +32,20 @@
     "vitest": "^1.0.0"
   },
   "type": "module",
-  "engines": { "node": ">=18" },
-  "files": ["dist/**/*"],
-  "keywords": ["resume", "github", "cli", "claude", "ai", "career"],
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "dist/**/*"
+  ],
+  "keywords": [
+    "resume",
+    "github",
+    "cli",
+    "claude",
+    "ai",
+    "career"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/kuangzixian/easy-offer"

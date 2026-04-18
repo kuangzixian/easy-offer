@@ -20,7 +20,7 @@ export async function askTargetPosition(): Promise<{ position: string; jd: strin
     name: 'jdMethod',
     message: '是否提供 JD？',
     choices: [
-      { name: '提供截图路径（Claude Vision OCR）', value: 'ocr' },
+      { name: '提供截图路径（本地 OCR，tesseract.js）', value: 'ocr' },
       { name: '手动粘贴文字', value: 'manual' },
       { name: '跳过', value: 'skip' },
     ],
@@ -36,30 +36,28 @@ export async function askTargetPosition(): Promise<{ position: string; jd: strin
       validate: (v: string) => v.trim().length > 0 || '路径不能为空',
     }])
 
-    const spinner = ora('正在识别图片...').start()
+    const spinner = ora('正在识别图片（首次运行会下载中文语言包，约 15MB）...').start()
     try {
-      const extracted = await extractJDFromImage(imgPath.trim())
-      spinner.succeed('识别完成')
+      const extracted = await extractJDFromImage(imgPath.trim(), pct => {
+        spinner.text = `识别中 ${pct}%`
+      })
+      spinner.succeed('识别完成，接下来请在编辑器中校对')
 
-      // Show preview: first 3 non-empty lines
-      const preview = extracted.split('\n').filter(l => l.trim()).slice(0, 3).join('\n')
-      console.log(chalk.dim('\n识别结果预览：\n' + preview + '\n'))
-
-      const { confirmed } = await inquirer.prompt([{
-        type: 'confirm',
-        name: 'confirmed',
-        message: '识别结果是否正确？',
-        default: true,
+      const { jd } = await inquirer.prompt([{
+        type: 'editor',
+        name: 'jd',
+        message: '请校对/修正 OCR 文本（保存并关闭编辑器后继续）',
+        default: extracted,
+        waitUserInput: false,
       }])
 
-      if (confirmed) return { position: position.trim(), jd: extracted }
+      const cleaned = (jd ?? '').trim()
+      if (cleaned) return { position: position.trim(), jd: cleaned }
 
-      console.log(chalk.yellow('请改用手动粘贴'))
-      // fall through to manual paste below
+      console.log(chalk.yellow('校对后内容为空，改为手动粘贴'))
     } catch (err) {
       spinner.fail(err instanceof Error ? err.message : String(err))
       console.log(chalk.yellow('将改为手动粘贴'))
-      // fall through to manual paste below
     }
   }
 

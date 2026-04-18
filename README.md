@@ -14,14 +14,14 @@ Generate a tailored resume from your GitHub commit history using Claude AI.
 - Fetches your GitHub PRs interactively
 - Uses Claude to generate professional resume descriptions (problem-solution-result format)
 - Tailors resume to a specific JD if provided
-- Supports JD input via screenshot (Claude Vision OCR) or manual text paste
+- Supports JD input via screenshot (local OCR via tesseract.js, with editor-based proofreading) or manual text paste
 - Outputs `resume.md` + `resume.pdf`
 - Generates `interview-prep.md` with predicted interview questions
 
 ### Prerequisites
 
 - Node.js 18+
-- `ANTHROPIC_API_KEY` environment variable (required for resume generation and JD screenshot OCR)
+- `ANTHROPIC_API_KEY` environment variable (required for resume generation)
 - GitHub Personal Access Token (with `repo` scope)
 
 ### Usage
@@ -60,7 +60,7 @@ easy-offer interview # Step 3: generate interview prep plan
 
 ### How it works
 
-1. **Step 0** (optional): Enter your target job position and provide the JD — either as a screenshot (OCR via Claude Vision) or by pasting text. When provided, the resume will be tailored to match JD keywords. Note: OCR uses the Claude API and consumes tokens.
+1. **Step 0** (optional): Enter your target job position and provide the JD — either as a screenshot (local OCR via tesseract.js; the extracted text opens in your `$EDITOR` for proofreading) or by pasting text. First OCR run downloads a ~15MB Chinese language pack to `~/.easy-offer/tesseract-cache/`.
 2. **Step 1**: Select your target role type (Go backend, Node.js, AI/Agent, etc.)
 3. **Step 2**: Provide your existing PDF resume path to extract work history
 4. **Step 3**: Authenticate with GitHub and select repos to include
@@ -92,14 +92,14 @@ MIT
 - 交互式拉取你的 GitHub PR 数据
 - 用 Claude 生成专业简历描述（问题-方案-结果格式）
 - 支持针对特定 JD 定制简历内容
-- JD 输入支持截图（Claude Vision OCR）或手动粘贴文字
+- JD 输入支持截图（本地 OCR，基于 tesseract.js，识别后在编辑器中二次校对）或手动粘贴文字
 - 输出 `resume.md` + `resume.pdf`
 - 生成 `interview-prep.md` 面试准备计划
 
 ### 环境要求
 
 - Node.js 18+
-- `ANTHROPIC_API_KEY` 环境变量（简历生成和 JD 截图 OCR 均需要）
+- `ANTHROPIC_API_KEY` 环境变量（简历生成需要）
 - GitHub Personal Access Token（需要 `repo` 权限）
 
 ### 使用方法
@@ -138,7 +138,7 @@ easy-offer interview # 第三步：生成面试准备计划
 
 ### 使用流程
 
-1. **第 0 步**（可选）：输入目标岗位名称，提供 JD —— 可上传截图（Claude Vision OCR 识别）或手动粘贴文字。有 JD 时简历会针对性地匹配关键词。注意：OCR 识别会调用 Claude API 并消耗 token。
+1. **第 0 步**（可选）：输入目标岗位名称，提供 JD —— 可上传截图（本地 OCR 识别，基于 tesseract.js，识别后会在 `$EDITOR` 中打开供你二次校对）或手动粘贴文字。首次识别会下载约 15MB 的中文语言包到 `~/.easy-offer/tesseract-cache/`。
 2. **第 1 步**：选择目标工种（Go 后端、Node.js、AI/Agent 等）
 3. **第 2 步**：提供现有 PDF 简历路径，提取工作经历
 4. **第 3 步**：GitHub 授权，选择要纳入简历的仓库
