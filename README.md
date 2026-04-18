@@ -21,7 +21,7 @@ Generate a tailored resume from your GitHub commit history using Claude AI.
 ### Prerequisites
 
 - Node.js 18+
-- `ANTHROPIC_API_KEY` environment variable (required for resume generation)
+- LLM access via any OpenAI-compatible endpoint (OpenAI, DeepSeek, OpenRouter, Ollama, etc.). On first run, the CLI prompts for `baseURL`, `apiKey`, and `model`, and saves them to `~/.easy-offer/config.json` (mode 0600). Re-run with `easy-offer config` to change. Or set `OPENAI_BASE_URL` / `OPENAI_API_KEY` / `OPENAI_MODEL` env vars to override individual fields.
 - GitHub Personal Access Token (with `repo` scope)
 
 ### Usage
@@ -39,6 +39,7 @@ easy-offer
 #### Subcommands
 
 ```bash
+easy-offer config    # Configure / reconfigure LLM (baseURL / apiKey / model)
 easy-offer fetch     # Step 1: fetch GitHub data → cache
 easy-offer build     # Step 2: generate resume from cache
 easy-offer interview # Step 3: generate interview prep plan
@@ -55,7 +56,9 @@ easy-offer interview # Step 3: generate interview prep plan
 
 | Variable | Description |
 |----------|-------------|
-| `ANTHROPIC_API_KEY` | Claude API key (required) |
+| `OPENAI_BASE_URL` | OpenAI-compatible endpoint base URL (optional, will prompt on first run) |
+| `OPENAI_API_KEY` | API key for the endpoint (optional, will prompt on first run) |
+| `OPENAI_MODEL` | Model name (e.g., `gpt-4o`, `deepseek-chat`) (optional, will prompt on first run) |
 | `GITHUB_TOKEN` | GitHub token (optional, can be entered interactively) |
 
 ### How it works
@@ -99,7 +102,7 @@ MIT
 ### 环境要求
 
 - Node.js 18+
-- `ANTHROPIC_API_KEY` 环境变量（简历生成需要）
+- 任何 OpenAI 兼容接口（OpenAI、DeepSeek、OpenRouter、本地 Ollama 等）。首次运行时 CLI 会引导你输入 `baseURL` / `apiKey` / `model`，存到 `~/.easy-offer/config.json`（权限 0600）。后续修改运行 `easy-offer config`。也可设置环境变量 `OPENAI_BASE_URL` / `OPENAI_API_KEY` / `OPENAI_MODEL` 覆盖单个字段。
 - GitHub Personal Access Token（需要 `repo` 权限）
 
 ### 使用方法
@@ -117,6 +120,7 @@ easy-offer
 #### 子命令
 
 ```bash
+easy-offer config    # 配置/修改 LLM（baseURL / apiKey / model）
 easy-offer fetch     # 第一步：拉取 GitHub 数据并缓存
 easy-offer build     # 第二步：从缓存生成简历
 easy-offer interview # 第三步：生成面试准备计划
@@ -133,7 +137,9 @@ easy-offer interview # 第三步：生成面试准备计划
 
 | 变量 | 说明 |
 |------|------|
-| `ANTHROPIC_API_KEY` | Claude API Key（必填） |
+| `OPENAI_BASE_URL` | OpenAI 兼容接口的基础 URL（可选，首次运行时会提示输入） |
+| `OPENAI_API_KEY` | 接口的 API Key（可选，首次运行时会提示输入） |
+| `OPENAI_MODEL` | 模型名称，如 `gpt-4o`、`deepseek-chat`（可选，首次运行时会提示输入） |
 | `GITHUB_TOKEN` | GitHub Token（可选，可在交互中输入） |
 
 ### 使用流程
