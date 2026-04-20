@@ -12,10 +12,11 @@ const sampleRepo: RepoData = {
 }
 
 describe('buildResumePrompt', () => {
-  it('includes role emphasis in system prompt', () => {
+  it('includes role emphasis and FAB framework in system prompt', () => {
     const { system } = buildResumePrompt(sampleRepo, 'go', null)
     expect(system).toContain('gRPC')
-    expect(system).toContain('问题-方案-结果')
+    expect(system).toContain('FAB')
+    expect(system).toContain('岗位侧重')
   })
 
   it('includes JD keywords when JD provided', () => {
