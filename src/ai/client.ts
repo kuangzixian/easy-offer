@@ -13,6 +13,21 @@ function getClient(): { client: OpenAI; model: string } {
   return { client, model: cachedModel! }
 }
 
+export function resetClient(): void {
+  client = null
+  cachedModel = null
+}
+
+export async function pingLLM(): Promise<void> {
+  const { client, model } = getClient()
+  const resp = await client.chat.completions.create({
+    model,
+    max_tokens: 1,
+    messages: [{ role: 'user', content: 'ping' }],
+  })
+  if (!resp.choices[0]) throw new Error('LLM 响应缺少 choices')
+}
+
 export async function callLLM(
   system: string,
   user: string,
