@@ -51,8 +51,10 @@ export async function runFetch(options: { output?: string }) {
       profile = parsed.profile
       spinner.succeed(`解析成功，检测到 ${existingExperience.length} 段工作经历`)
       existingExperience = await confirmWorkHistory(existingExperience)
-    } catch {
-      spinner.fail('PDF 解析失败，请手动输入')
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      spinner.fail(`PDF 解析失败：${msg}`)
+      console.log(chalk.yellow('将改为手动输入；如需使用 PDF 解析，请检查 LLM 配置（easy-offer config）和 PDF 文件'))
     }
   }
 

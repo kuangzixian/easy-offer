@@ -21,7 +21,7 @@
     "ora": "^8.0.0",
     "pdf-parse": "^1.1.1",
     "puppeteer": "^22.0.0",
-    "tesseract.js": "^7.0.0"
+    "tesseract.js": "^5.1.1"
   },
   "devDependencies": {
     "@types/inquirer": "^9.0.0",
