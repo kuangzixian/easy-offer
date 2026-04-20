@@ -4,6 +4,7 @@ import ora from 'ora'
 import chalk from 'chalk'
 import { ROLES } from '../config.js'
 import { extractJDFromImage } from '../ocr/vision.js'
+import { cleanOCRText } from '../ocr/cleanup.js'
 import type { RoleKey, WorkExperience, UserProfile } from '../types.js'
 
 export async function askTargetPosition(): Promise<{ position: string; jd: string | null }> {
@@ -41,13 +42,22 @@ export async function askTargetPosition(): Promise<{ position: string; jd: strin
       const extracted = await extractJDFromImage(imgPath.trim(), pct => {
         spinner.text = `识别中 ${pct}%`
       })
-      spinner.succeed('识别完成，接下来请在编辑器中校对')
+
+      let preview = extracted
+      spinner.text = '正在用大模型清洗 OCR 噪声...'
+      try {
+        preview = await cleanOCRText(extracted)
+        spinner.succeed('识别 + 清洗完成，接下来请在编辑器中校对')
+      } catch (cleanupErr) {
+        const msg = cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)
+        spinner.warn(`OCR 清洗失败（${msg}），用原始识别结果继续`)
+      }
 
       const { jd } = await inquirer.prompt([{
         type: 'editor',
         name: 'jd',
         message: '请校对/修正 OCR 文本（保存并关闭编辑器后继续）',
-        default: extracted,
+        default: preview,
         waitUserInput: false,
       }])
 
