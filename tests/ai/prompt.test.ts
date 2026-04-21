@@ -3,9 +3,9 @@ import { buildResumePrompt, buildInterviewPrompt } from '../../src/ai/prompt.js'
 import type { RepoData } from '../../src/types.js'
 
 const sampleRepo: RepoData = {
-  name: 'jike-coco',
-  org: 'iftechio',
-  company: '即刻',
+  name: 'sample-service',
+  org: 'sample-org',
+  company: '甲公司',
   period: '2024.5 - 至今',
   techStack: ['Go', 'gRPC', 'Kafka'],
   prs: [{ title: 'feat: add retry', body: 'retry on UNAVAILABLE', mergedAt: '2025-01', filesChanged: [] }],
@@ -26,7 +26,7 @@ describe('buildResumePrompt', () => {
 
   it('includes repo name and PR data', () => {
     const { user } = buildResumePrompt(sampleRepo, 'go', null)
-    expect(user).toContain('jike-coco')
+    expect(user).toContain('sample-service')
     expect(user).toContain('feat: add retry')
   })
 })
