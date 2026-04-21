@@ -7,6 +7,7 @@ import { callLLM } from '../ai/client.js'
 import { buildResumePrompt } from '../ai/prompt.js'
 import { markdownToPDF } from '../pdf/writer.js'
 import { ROLES } from '../config.js'
+import { askReposToInclude } from '../interactive/questions.js'
 import type { RoleKey } from '../types.js'
 
 export async function runBuild(options: { output?: string; noPdf?: boolean }) {
@@ -33,11 +34,28 @@ export async function runBuild(options: { output?: string; noPdf?: boolean }) {
     console.log(chalk.blue('✦ 检测到 JD，简历将对齐 JD 关键词'))
   }
 
-  // Generate project sections per repo
+  // Let user curate which repos to include
+  const selected = await askReposToInclude(
+    cache.repos.map(r => ({
+      name: r.name,
+      company: r.company,
+      period: r.period,
+      prCount: r.prs.length,
+    })),
+  )
+  const selectedSet = new Set(selected)
+  const includedRepos = cache.repos.filter(r => selectedSet.has(r.name))
+
+  if (includedRepos.length === 0) {
+    console.error(chalk.red('✗ 未选择任何项目，退出'))
+    process.exit(1)
+  }
+
+  // Generate project sections per selected repo
   const sections: string[] = []
   const failed: string[] = []
 
-  for (const repo of cache.repos) {
+  for (const repo of includedRepos) {
     const spinner = ora(`大模型正在分析 ${repo.name}...`).start()
     try {
       const { system, user } = buildResumePrompt(repo, cache.role as RoleKey, cache.jd)
@@ -52,7 +70,7 @@ export async function runBuild(options: { output?: string; noPdf?: boolean }) {
   }
 
   // Assemble full resume
-  const techStackAll = [...new Set(cache.repos.flatMap(r => r.techStack))]
+  const techStackAll = [...new Set(includedRepos.flatMap(r => r.techStack))]
   const workHistory = cache.existingExperience
     .map(e => `- **${e.title}** | ${e.company} | ${e.period}`)
     .join('\n')

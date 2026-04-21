@@ -6,20 +6,42 @@ export function createGitHubClient(token: string) {
   return new Octokit({ auth: token })
 }
 
-export async function listOrgRepos(
+export interface DiscoveredRepo {
+  owner: string
+  name: string
+  prCount: number
+}
+
+export async function searchUserPRRepos(
   octokit: Octokit,
-  org: string,
   username: string,
-): Promise<{ name: string; language: string | null }[]> {
-  const repos: { name: string; language: string | null }[] = []
+  from: string,  // YYYY-MM-DD
+  to: string,    // YYYY-MM-DD
+): Promise<DiscoveredRepo[]> {
+  const counts = new Map<string, number>()
   let page = 1
-  while (true) {
-    const { data } = await octokit.repos.listForOrg({ org, per_page: 100, page })
-    if (data.length === 0) break
-    repos.push(...data.map(r => ({ name: r.name, language: r.language ?? null })))
+  const MAX_PAGES = 10  // GitHub search caps at 1000 results
+  while (page <= MAX_PAGES) {
+    const { data } = await octokit.search.issuesAndPullRequests({
+      q: `author:${username} type:pr is:merged merged:${from}..${to}`,
+      per_page: 100,
+      page,
+    })
+    for (const item of data.items) {
+      const m = item.repository_url.match(/\/repos\/([^/]+)\/([^/]+)$/)
+      if (!m) continue
+      const key = `${m[1]}/${m[2]}`
+      counts.set(key, (counts.get(key) ?? 0) + 1)
+    }
+    if (data.items.length < 100) break
     page++
   }
-  return repos
+  return [...counts.entries()]
+    .map(([key, prCount]) => {
+      const [owner, name] = key.split('/')
+      return { owner, name, prCount }
+    })
+    .sort((a, b) => b.prCount - a.prCount)
 }
 
 export async function fetchRepoPRs(

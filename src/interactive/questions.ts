@@ -148,7 +148,7 @@ function getGhCliToken(): { token: string; username: string } | null {
   }
 }
 
-export async function askGitHubCredentials(): Promise<{ token: string; username: string; org: string }> {
+export async function askGitHubCredentials(): Promise<{ token: string; username: string }> {
   let token = ''
   let detectedUsername = ''
 
@@ -171,31 +171,53 @@ export async function askGitHubCredentials(): Promise<{ token: string; username:
     }
   }
 
-  const questions: any[] = []
-  if (!detectedUsername) {
-    questions.push({ type: 'input', name: 'username', message: 'GitHub 用户名:' })
+  let username = detectedUsername
+  if (!username) {
+    const { u } = await inquirer.prompt([{ type: 'input', name: 'u', message: 'GitHub 用户名:' }])
+    username = u
   }
-  questions.push({ type: 'input', name: 'org', message: '所属组织 (org，无则回车跳过):' })
 
-  const answers = await inquirer.prompt(questions)
-  const username = detectedUsername || answers.username
-  const org = answers.org?.trim() || username  // default org to username if blank
-
-  return { token, username, org }
+  return { token, username }
 }
 
-export async function askRepoSelection(
-  repos: { name: string; language: string | null; prCount?: number }[],
+export async function askDateRange(
+  suggestedFrom?: string,
+  suggestedTo?: string,
+): Promise<{ from: string; to: string }> {
+  const today = new Date().toISOString().slice(0, 10)
+  const answers = await inquirer.prompt([
+    {
+      type: 'input',
+      name: 'from',
+      message: '起始时间 (YYYY-MM-DD):',
+      default: suggestedFrom ?? '2018-01-01',
+      validate: (v: string) => /^\d{4}-\d{2}-\d{2}$/.test(v.trim()) || '格式: YYYY-MM-DD',
+    },
+    {
+      type: 'input',
+      name: 'to',
+      message: '截止时间 (YYYY-MM-DD):',
+      default: suggestedTo ?? today,
+      validate: (v: string) => /^\d{4}-\d{2}-\d{2}$/.test(v.trim()) || '格式: YYYY-MM-DD',
+    },
+  ])
+  return { from: answers.from.trim(), to: answers.to.trim() }
+}
+
+export async function askReposToInclude(
+  repos: { name: string; company: string; period: string; prCount: number }[],
 ): Promise<string[]> {
+  if (repos.length === 0) return []
   const { selected } = await inquirer.prompt([{
     type: 'checkbox',
     name: 'selected',
-    message: '[步骤 3/5] 选择要纳入简历的仓库:',
+    message: '选择要写入简历的项目经历（空格切换，回车确认）:',
     choices: repos.map(r => ({
-      name: `${r.name} (${r.language ?? 'unknown'}${r.prCount != null ? `, ${r.prCount} PRs` : ''})`,
+      name: `[${r.company || '未分类'} ${r.period || '-'}] ${r.name} (${r.prCount} PRs)`,
       value: r.name,
+      checked: true,
     })),
-    validate: (ans: string[]) => ans.length > 0 || '请至少选择一个仓库',
+    validate: (ans: string[]) => ans.length > 0 || '请至少保留一个项目',
   }])
   return selected
 }

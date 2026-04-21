@@ -1,14 +1,14 @@
 import ora from 'ora'
 import chalk from 'chalk'
-import inquirer from 'inquirer'
-import { createGitHubClient, listOrgRepos, buildRepoData } from '../github/client.js'
+import { createGitHubClient, searchUserPRRepos, buildRepoData } from '../github/client.js'
 import { extractTextFromPDF, parsePDFWithLLM } from '../pdf/reader.js'
 import {
   askTargetPosition, askRole, askPDFPath, askUserProfile,
-  askGitHubCredentials, askRepoSelection, confirmWorkHistory,
+  askGitHubCredentials, askDateRange, confirmWorkHistory,
 } from '../interactive/questions.js'
 import { writeCache } from '../cache.js'
 import { inferRoleFromJD } from '../config.js'
+import { inferDateRangeFromExperience, matchExperience } from '../period.js'
 import type { Cache, RoleKey, WorkExperience, RepoData } from '../types.js'
 
 export async function runFetch(options: { output?: string }) {
@@ -21,7 +21,7 @@ export async function runFetch(options: { output?: string }) {
   // Step 0: Target position + JD
   const { position, jd } = await askTargetPosition()
 
-  // Step 1: Role (infer from JD if available)
+  // Step 1: Role
   let inferredRole: RoleKey | undefined
   if (jd) {
     const spinner = ora('分析 JD，推断工种...').start()
@@ -60,46 +60,66 @@ export async function runFetch(options: { output?: string }) {
 
   profile = await askUserProfile(profile)
 
-  // Step 3: GitHub data
-  const { token, username, org } = await askGitHubCredentials()
+  // Step 3: GitHub credentials (no org)
+  const { token, username } = await askGitHubCredentials()
   const octokit = createGitHubClient(token)
 
-  const listSpinner = ora('拉取仓库列表...').start()
-  let allRepos: { name: string; language: string | null }[] = []
+  // Step 3.5: Date range — default from parsed experience if available
+  const suggested = inferDateRangeFromExperience(existingExperience)
+  console.log(chalk.bold('\n[步骤 3/5] 设定 PR 拉取的时间范围'))
+  if (suggested) {
+    console.log(chalk.dim(`  从已解析的工作经历推断：${suggested.from} ~ ${suggested.to}（可修改）`))
+  }
+  const { from, to } = await askDateRange(suggested?.from, suggested?.to)
+
+  // Step 4: Auto-discover all repos where user has merged PRs in the date range
+  const searchSpinner = ora(`搜索 ${username} 在 ${from} ~ ${to} 的所有合并 PR...`).start()
+  let discovered: { owner: string; name: string; prCount: number }[] = []
   try {
-    allRepos = await listOrgRepos(octokit, org, username)
-    listSpinner.succeed(`找到 ${allRepos.length} 个仓库`)
+    discovered = await searchUserPRRepos(octokit, username, from, to)
+    searchSpinner.succeed(`发现 ${discovered.length} 个相关仓库，共 ${discovered.reduce((s, r) => s + r.prCount, 0)} 条 PR`)
   } catch (err) {
-    listSpinner.fail('拉取仓库列表失败')
+    searchSpinner.fail('搜索失败')
     console.error((err as Error).message)
     process.exit(1)
   }
 
-  const selectedNames = await askRepoSelection(allRepos)
-
-  // Ask company/period per repo (repos may span multiple employers)
-  const repoMeta: Record<string, { company: string; period: string }> = {}
-  for (const repoName of selectedNames) {
-    console.log(chalk.dim(`\n配置仓库：${repoName}`))
-    const { company: c, period: p } = await inquirer.prompt([
-      { type: 'input', name: 'company', message: `  所属公司（如 即刻 iftechio）:`, default: org },
-      { type: 'input', name: 'period', message: `  在职时间（如 2024.5 - 至今）:` },
-    ])
-    repoMeta[repoName] = { company: c.trim(), period: p.trim() }
+  if (discovered.length === 0) {
+    console.log(chalk.yellow('未找到任何相关仓库，是否时间范围选得太窄？请重新运行 fetch。'))
+    process.exit(0)
   }
 
-  const fetchSpinner = ora('拉取 PR 数据...').start()
+  // Step 5: Fetch PR bodies for each repo + auto-infer company/period from PR dates
+  const fetchSpinner = ora('拉取 PR 详情...').start()
   const repos: RepoData[] = []
   const failed: string[] = []
 
-  for (const repoName of selectedNames) {
+  for (const r of discovered) {
     try {
-      fetchSpinner.text = `拉取 ${repoName}...`
-      const { company, period } = repoMeta[repoName]
-      const repoData = await buildRepoData(octokit, org, repoName, username, company, period)
+      fetchSpinner.text = `拉取 ${r.owner}/${r.name}...`
+      // First build with placeholder company/period; we'll overwrite below using PR dates
+      const repoData = await buildRepoData(octokit, r.owner, r.name, username, '', '', from)
+      // Infer company/period from the most common match across this repo's PR dates
+      const matchCounts = new Map<string, { company: string; period: string; count: number }>()
+      for (const pr of repoData.prs) {
+        const match = matchExperience(pr.mergedAt, existingExperience)
+        if (!match) continue
+        const key = `${match.company}|${match.period}`
+        const existing = matchCounts.get(key)
+        if (existing) existing.count++
+        else matchCounts.set(key, { ...match, count: 1 })
+      }
+      const best = [...matchCounts.values()].sort((a, b) => b.count - a.count)[0]
+      if (best) {
+        repoData.company = best.company
+        repoData.period = best.period
+      } else {
+        repoData.company = '未分类'
+        repoData.period = ''
+      }
       repos.push(repoData)
     } catch {
-      failed.push(repoName)
+      failed.push(`${r.owner}/${r.name}`)
     }
   }
 
