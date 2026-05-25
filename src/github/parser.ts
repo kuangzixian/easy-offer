@@ -9,13 +9,33 @@ const TECH_KEYWORDS = [
   'Prometheus', 'Grafana', 'pprof', 'OpenAI', 'Claude', 'LLM', 'RAG',
 ]
 
+const REGEX_META = /[.*+?^${}()|[\]\\]/g
+
+/**
+ * Build a case-insensitive matcher for `keyword` that won't match when the
+ * keyword is embedded inside a larger alphanumeric token.
+ *
+ * Examples:
+ *   "Go"      ✗ "google", "going", "logout"        ✓ "Go and Rust", "uses Go."
+ *   "Java"    ✗ "javascript"                        ✓ "Java 11"
+ *   "Node.js" ✗ "Node.jsfoo"                        ✓ "Node.js 18"
+ *
+ * Standard `\b` doesn't help for keywords with non-word chars like the dot in
+ * "Node.js", so we use explicit lookarounds against `[A-Za-z0-9]`.
+ */
+function buildKeywordRegex(keyword: string): RegExp {
+  const escaped = keyword.replace(REGEX_META, '\\$&')
+  return new RegExp(`(?<![A-Za-z0-9])${escaped}(?![A-Za-z0-9])`, 'i')
+}
+
+const KEYWORD_PATTERNS: { keyword: string; pattern: RegExp }[] =
+  TECH_KEYWORDS.map(k => ({ keyword: k, pattern: buildKeywordRegex(k) }))
+
 export function extractTechStack(prs: PullRequest[]): string[] {
   const found = new Set<string>()
   const allText = prs.map(p => `${p.title} ${p.body} ${p.filesChanged.join(' ')}`).join(' ')
-  for (const kw of TECH_KEYWORDS) {
-    if (allText.toLowerCase().includes(kw.toLowerCase())) {
-      found.add(kw)
-    }
+  for (const { keyword, pattern } of KEYWORD_PATTERNS) {
+    if (pattern.test(allText)) found.add(keyword)
   }
   return [...found]
 }

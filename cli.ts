@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 import { program } from 'commander'
+import chalk from 'chalk'
 import { registerCommands } from './src/commands/index.js'
 import { ensureConfig } from './src/config/ensure.js'
+import { CliError } from './src/utils/errors.js'
 
 program
   .name('easy-offer')
@@ -17,10 +19,14 @@ async function main() {
   if (subcommand !== 'config') {
     await ensureConfig()
   }
-  program.parse()
+  await program.parseAsync()
 }
 
 main().catch(err => {
+  if (err instanceof CliError) {
+    console.error(chalk.red(`✗ ${err.message}`))
+    process.exit(err.exitCode)
+  }
   console.error(err)
   process.exit(1)
 })

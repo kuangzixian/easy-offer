@@ -2,9 +2,14 @@ import inquirer from 'inquirer'
 import chalk from 'chalk'
 import { configPath, hasConfig, loadConfigRaw, saveConfig, type LLMConfig } from './store.js'
 
+/**
+ * Mask an API key for log/display. We require a minimum of 16 visible chars
+ * before partially revealing the prefix/suffix — short keys leak too high a
+ * fraction of their content (an 8-char key would expose 7 chars).
+ */
 export function maskKey(key: string): string {
-  if (key.length < 8) return '***'
-  return `${key.slice(0, 3)}***${key.slice(-4)}`
+  if (key.length < 16) return '***'
+  return `${key.slice(0, 4)}***${key.slice(-4)}`
 }
 
 export async function runConfigWizard(): Promise<void> {

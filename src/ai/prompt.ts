@@ -1,4 +1,4 @@
-import { getRoleConfig } from '../config.js'
+import { getRoleConfig } from '../roles.js'
 import type { RepoData, RoleKey } from '../types.js'
 
 const RESUME_RULES = `

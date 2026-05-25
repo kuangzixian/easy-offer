@@ -70,6 +70,11 @@ export function getRoleConfig(key: RoleKey): RoleConfig {
   return role
 }
 
+/**
+ * Score JD text against each role's keywords (case-insensitive substring match)
+ * and return the highest-scoring role key. Used as a hint only — the user can
+ * always override.
+ */
 export function inferRoleFromJD(jd: string): RoleKey {
   const scores: Record<RoleKey, number> = {
     go: 0, java: 0, node: 0, frontend: 0,

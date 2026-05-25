@@ -71,8 +71,60 @@ describe('parsePDFWithLLM', () => {
     expect(result.workExperience).toHaveLength(3)
   })
 
-  it('throws when LLM returns no valid JSON', async () => {
+  it('throws when LLM returns no JSON object', async () => {
     vi.mocked(callLLM).mockResolvedValue('抱歉，无法解析该简历。')
     await expect(parsePDFWithLLM(sampleText)).rejects.toThrow('大模型未返回有效 JSON')
+  })
+
+  it('throws when JSON is unbalanced (greedy regex would have over-matched)', async () => {
+    vi.mocked(callLLM).mockResolvedValue('Here you go: { "profile": { "name": "x"')
+    await expect(parsePDFWithLLM(sampleText)).rejects.toThrow('大模型未返回有效 JSON')
+  })
+
+  it('throws a clear error when workExperience is the wrong type (not array)', async () => {
+    vi.mocked(callLLM).mockResolvedValue(JSON.stringify({
+      profile: { name: 'x', phone: '', email: '' },
+      workExperience: 'not-an-array',
+      education: '',
+    }))
+    await expect(parsePDFWithLLM(sampleText)).rejects.toThrow(/workExperience/)
+  })
+
+  it('coerces missing profile fields to empty strings (no crash)', async () => {
+    vi.mocked(callLLM).mockResolvedValue(JSON.stringify({
+      workExperience: [],
+      education: 'some school',
+    }))
+    const result = await parsePDFWithLLM(sampleText)
+    expect(result.profile.name).toBe('')
+    expect(result.profile.phone).toBe('')
+    expect(result.profile.email).toBe('')
+    expect(result.education).toBe('some school')
+  })
+
+  it('skips non-object entries inside workExperience', async () => {
+    vi.mocked(callLLM).mockResolvedValue(JSON.stringify({
+      profile: { name: '', phone: '', email: '' },
+      workExperience: [
+        { company: 'A', title: 'eng', period: '2022 - 2023' },
+        null,
+        'string entry',
+        { company: 'B', title: 'eng', period: '2023 - now' },
+      ],
+      education: '',
+    }))
+    const result = await parsePDFWithLLM(sampleText)
+    expect(result.workExperience).toHaveLength(2)
+    expect(result.workExperience.map(e => e.company)).toEqual(['A', 'B'])
+  })
+
+  it('extracts JSON correctly even when LLM emits trailing prose with extra braces', async () => {
+    const noisy = `Here is the JSON:
+${mockLLMResponse}
+
+Note: any { stray braces } in this trailing text should be ignored.`
+    vi.mocked(callLLM).mockResolvedValue(noisy)
+    const result = await parsePDFWithLLM(sampleText)
+    expect(result.workExperience).toHaveLength(3)
   })
 })

@@ -6,28 +6,28 @@ import { readCache } from '../cache.js'
 import { callLLM } from '../ai/client.js'
 import { buildResumePrompt } from '../ai/prompt.js'
 import { markdownToPDF } from '../pdf/writer.js'
-import { ROLES } from '../config.js'
+import { ROLES } from '../roles.js'
 import { askReposToInclude } from '../interactive/questions.js'
+import { CliError } from '../utils/errors.js'
+import { pMap } from '../utils/concurrency.js'
 import type { RoleKey } from '../types.js'
+
+const LLM_CONCURRENCY = 3
 
 export async function runBuild(options: { output?: string; noPdf?: boolean }) {
   const outputDir = options.output ?? '.'
   const cache = await readCache(outputDir)
 
   if (!cache) {
-    console.error(chalk.red('✗ 未找到缓存文件，请先运行 fetch'))
-    process.exit(1)
+    throw new CliError('未找到缓存文件，请先运行 fetch')
   }
 
-  const validRole = ROLES.find(r => r.key === cache.role)
-  if (!validRole) {
-    console.error(chalk.red(`✗ 缓存中的工种 "${cache.role}" 无效，请重新运行 fetch`))
-    process.exit(1)
+  if (!ROLES.some(r => r.key === cache.role)) {
+    throw new CliError(`缓存中的工种 "${cache.role}" 无效，请重新运行 fetch`)
   }
 
   if (cache.repos.length === 0) {
-    console.error(chalk.red('✗ 缓存中没有仓库数据，请先运行 fetch 并选择至少一个仓库'))
-    process.exit(1)
+    throw new CliError('缓存中没有仓库数据，请先运行 fetch 并选择至少一个仓库')
   }
 
   if (cache.jd) {
@@ -47,29 +47,50 @@ export async function runBuild(options: { output?: string; noPdf?: boolean }) {
   const includedRepos = cache.repos.filter(r => selectedSet.has(r.name))
 
   if (includedRepos.length === 0) {
-    console.error(chalk.red('✗ 未选择任何项目，退出'))
-    process.exit(1)
+    throw new CliError('未选择任何项目，退出')
   }
 
-  // Generate project sections per selected repo
-  const sections: string[] = []
-  const failed: string[] = []
+  // Generate project sections in parallel with bounded concurrency.
+  // A single shared spinner gives a clean view of multi-repo progress
+  // (per-repo spinners would garble the terminal under concurrency).
+  const total = includedRepos.length
+  let completed = 0
+  let lastDone = ''
+  const spinner = ora(`大模型分析 0/${total} 个仓库...`).start()
 
-  for (const repo of includedRepos) {
-    const spinner = ora(`大模型正在分析 ${repo.name}...`).start()
+  const results = await pMap(includedRepos, LLM_CONCURRENCY, async repo => {
+    const { system, user } = buildResumePrompt(repo, cache.role as RoleKey, cache.jd)
     try {
-      const { system, user } = buildResumePrompt(repo, cache.role as RoleKey, cache.jd)
-      const result = await callLLM(system, user)
-      sections.push(result)
-      spinner.succeed(`${repo.name} 完成`)
+      const content = await callLLM(system, user, 2000, {
+        onRetry: ({ attempt, error }) => {
+          spinner.text = `大模型分析 ${completed}/${total}（${repo.name} 第 ${attempt} 次重试: ${error.message}）`
+        },
+      })
+      completed++
+      lastDone = repo.name
+      spinner.text = `大模型分析 ${completed}/${total} 个仓库（最近完成: ${lastDone}）`
+      return { name: repo.name, content, ok: true as const }
     } catch (err) {
-      spinner.fail(`${repo.name} 失败，已跳过`)
-      sections.push(`<!-- TODO: ${repo.name} 生成失败，请手动补充 -->`)
-      failed.push(repo.name)
+      completed++
+      const msg = err instanceof Error ? err.message : String(err)
+      spinner.text = `大模型分析 ${completed}/${total}（${repo.name} 失败: ${msg}）`
+      return {
+        name: repo.name,
+        content: `<!-- TODO: ${repo.name} 生成失败：${msg}，请手动补充 -->`,
+        ok: false as const,
+      }
     }
+  })
+
+  const failed = results.filter(r => !r.ok).map(r => r.name)
+  if (failed.length > 0) {
+    spinner.warn(`分析完成，${total - failed.length}/${total} 成功，${failed.length} 失败`)
+  } else {
+    spinner.succeed(`分析完成，${total}/${total} 成功`)
   }
 
   // Assemble full resume
+  const sections = results.map(r => r.content)
   const techStackAll = [...new Set(includedRepos.flatMap(r => r.techStack))]
   const workHistory = cache.existingExperience
     .map(e => `- **${e.title}** | ${e.company} | ${e.period}`)

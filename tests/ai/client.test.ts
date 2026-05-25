@@ -31,6 +31,36 @@ afterEach(() => {
   delete process.env.OPENAI_MODEL
 })
 
+describe('isRetryableLLMError', () => {
+  it('treats 4xx client errors as terminal', async () => {
+    const { isRetryableLLMError } = await import('../../src/ai/client.js')
+    expect(isRetryableLLMError({ status: 400 })).toBe(false)
+    expect(isRetryableLLMError({ status: 401 })).toBe(false)
+    expect(isRetryableLLMError({ status: 403 })).toBe(false)
+    expect(isRetryableLLMError({ status: 404 })).toBe(false)
+  })
+
+  it('treats 408 / 429 / 5xx as retryable', async () => {
+    const { isRetryableLLMError } = await import('../../src/ai/client.js')
+    expect(isRetryableLLMError({ status: 408 })).toBe(true)
+    expect(isRetryableLLMError({ status: 429 })).toBe(true)
+    expect(isRetryableLLMError({ status: 500 })).toBe(true)
+    expect(isRetryableLLMError({ status: 503 })).toBe(true)
+  })
+
+  it('treats network / status-less errors as retryable', async () => {
+    const { isRetryableLLMError } = await import('../../src/ai/client.js')
+    expect(isRetryableLLMError(new Error('ECONNRESET'))).toBe(true)
+    expect(isRetryableLLMError(undefined)).toBe(true)
+  })
+
+  it('reads status from response.status as a fallback', async () => {
+    const { isRetryableLLMError } = await import('../../src/ai/client.js')
+    expect(isRetryableLLMError({ response: { status: 401 } })).toBe(false)
+    expect(isRetryableLLMError({ response: { status: 502 } })).toBe(true)
+  })
+})
+
 describe('pingLLM', () => {
   it('sends a minimal 1-token probe and resolves on success', async () => {
     mockCreate.mockResolvedValueOnce({ choices: [{ message: { content: 'x' } }] })
@@ -75,6 +105,20 @@ describe('resetClient', () => {
     await callLLM('s', 'u')
     expect(openaiCtor.mock.calls.length).toBe(afterFirst + 1)
   })
+
+  it('passes a request timeout to the OpenAI constructor', async () => {
+    mockCreate.mockResolvedValue({ choices: [{ message: { content: 'x' } }] })
+    const { callLLM, resetClient } = await import('../../src/ai/client.js')
+    const openaiModule = await import('openai')
+    const openaiCtor = vi.mocked(openaiModule.default)
+    openaiCtor.mockClear()
+    resetClient()
+
+    await callLLM('s', 'u')
+    const ctorOpts = openaiCtor.mock.calls[0][0]
+    expect(ctorOpts).toHaveProperty('timeout')
+    expect(typeof (ctorOpts as { timeout?: number }).timeout).toBe('number')
+  })
 })
 
 describe('callLLM', () => {
@@ -105,11 +149,20 @@ describe('callLLM', () => {
     expect(mockCreate.mock.calls[0][0].max_tokens).toBe(2000)
   })
 
-  it('retries up to 3 times on failure then throws final error', async () => {
+  it('does NOT retry on 4xx errors (fail fast on auth/bad-model)', async () => {
+    const err = Object.assign(new Error('401 unauthorized'), { status: 401 })
+    mockCreate.mockRejectedValueOnce(err)
+    const { callLLM } = await import('../../src/ai/client.js')
+    await expect(callLLM('s', 'u')).rejects.toThrow('401 unauthorized')
+    expect(mockCreate).toHaveBeenCalledTimes(1)  // critical: no retry
+  })
+
+  it('retries up to 3 times on retryable errors then throws final error', async () => {
+    const transient = (msg: string) => Object.assign(new Error(msg), { status: 503 })
     mockCreate
-      .mockRejectedValueOnce(new Error('fail-1'))
-      .mockRejectedValueOnce(new Error('fail-2'))
-      .mockRejectedValueOnce(new Error('fail-3'))
+      .mockRejectedValueOnce(transient('fail-1'))
+      .mockRejectedValueOnce(transient('fail-2'))
+      .mockRejectedValueOnce(transient('fail-3'))
     const { callLLM } = await import('../../src/ai/client.js')
     await expect(callLLM('s', 'u')).rejects.toThrow('fail-3')
     expect(mockCreate).toHaveBeenCalledTimes(3)
@@ -125,12 +178,24 @@ describe('callLLM', () => {
     expect(mockCreate).toHaveBeenCalledTimes(2)
   }, 5000)
 
-  it('succeeds on retry after a transient failure', async () => {
+  it('succeeds on retry after a transient network failure', async () => {
     mockCreate
-      .mockRejectedValueOnce(new Error('transient'))
+      .mockRejectedValueOnce(new Error('ECONNRESET'))
       .mockResolvedValueOnce({ choices: [{ message: { content: 'ok' } }] })
     const { callLLM } = await import('../../src/ai/client.js')
     const result = await callLLM('s', 'u')
     expect(result).toBe('ok')
+  }, 5000)
+
+  it('invokes onRetry callback before each retry attempt', async () => {
+    mockCreate
+      .mockRejectedValueOnce(Object.assign(new Error('boom-1'), { status: 503 }))
+      .mockResolvedValueOnce({ choices: [{ message: { content: 'ok' } }] })
+    const { callLLM } = await import('../../src/ai/client.js')
+    const calls: { attempt: number; message: string }[] = []
+    await callLLM('s', 'u', 2000, {
+      onRetry: ({ attempt, error }) => calls.push({ attempt, message: error.message }),
+    })
+    expect(calls).toEqual([{ attempt: 1, message: 'boom-1' }])
   }, 5000)
 })

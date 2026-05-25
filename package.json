@@ -9,7 +9,8 @@
     "dev": "tsx cli.ts",
     "build": "tsc",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@octokit/rest": "^21.0.0",

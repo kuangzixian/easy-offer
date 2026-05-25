@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import * as fsPromises from 'fs/promises'
+import { homedir } from 'os'
 
 vi.mock('fs/promises')
 
@@ -91,5 +92,20 @@ describe('extractJDFromImage', () => {
     capturedLogger?.({ status: 'recognizing text', progress: 1 })
 
     expect(progress).toEqual([50, 100])
+  })
+
+  it('expands ~ to the user home directory before access check', async () => {
+    vi.mocked(fsPromises.access).mockResolvedValue(undefined)
+    mockRecognize.mockResolvedValue({ data: { text: 'jd' } })
+
+    await extractJDFromImage('~/Desktop/jd.png')
+
+    // The mock should have been called with the expanded absolute path,
+    // not the literal `~/Desktop/jd.png`.
+    expect(vi.mocked(fsPromises.access)).toHaveBeenCalledWith(
+      expect.stringContaining(homedir()),
+    )
+    const calledWith = vi.mocked(fsPromises.access).mock.calls[0][0]
+    expect(calledWith).not.toContain('~')
   })
 })

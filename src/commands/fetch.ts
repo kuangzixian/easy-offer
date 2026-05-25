@@ -7,8 +7,9 @@ import {
   askGitHubCredentials, askDateRange, confirmWorkHistory,
 } from '../interactive/questions.js'
 import { writeCache } from '../cache.js'
-import { inferRoleFromJD } from '../config.js'
+import { inferRoleFromJD } from '../roles.js'
 import { inferDateRangeFromExperience, matchExperience } from '../period.js'
+import { CliError } from '../utils/errors.js'
 import type { Cache, RoleKey, WorkExperience, RepoData } from '../types.js'
 
 export async function runFetch(options: { output?: string }) {
@@ -18,10 +19,10 @@ export async function runFetch(options: { output?: string }) {
   console.log(chalk.bold('  easy-offer v1.0'))
   console.log(chalk.bold('━━━━━━━━━━━━━━━━━━━━━━━━━━\n'))
 
-  // Step 0: Target position + JD
+  // Step 1: Target position + JD
   const { position, jd } = await askTargetPosition()
 
-  // Step 1: Role
+  // Step 2: Role
   let inferredRole: RoleKey | undefined
   if (jd) {
     const spinner = ora('分析 JD，推断工种...').start()
@@ -34,7 +35,7 @@ export async function runFetch(options: { output?: string }) {
   }
   const role = await askRole(inferredRole)
 
-  // Step 2: PDF
+  // Step 3: PDF
   const pdfPath = await askPDFPath()
   let existingExperience: WorkExperience[] = []
   let education = ''
@@ -60,46 +61,71 @@ export async function runFetch(options: { output?: string }) {
 
   profile = await askUserProfile(profile)
 
-  // Step 3: GitHub credentials (no org)
+  // Step 4: GitHub credentials
   const { token, username } = await askGitHubCredentials()
   const octokit = createGitHubClient(token)
 
-  // Step 3.5: Date range — default from parsed experience if available
+  // Step 4.5: Date range — default from parsed experience if available
   const suggested = inferDateRangeFromExperience(existingExperience)
-  console.log(chalk.bold('\n[步骤 3/5] 设定 PR 拉取的时间范围'))
+  console.log(chalk.bold('\n[步骤 4/5] 设定 PR 拉取的时间范围'))
   if (suggested) {
     console.log(chalk.dim(`  从已解析的工作经历推断：${suggested.from} ~ ${suggested.to}（可修改）`))
   }
   const { from, to } = await askDateRange(suggested?.from, suggested?.to)
 
-  // Step 4: Auto-discover all repos where user has merged PRs in the date range
+  // Step 5: Auto-discover all repos where user has merged PRs in the date range
   const searchSpinner = ora(`搜索 ${username} 在 ${from} ~ ${to} 的所有合并 PR...`).start()
-  let discovered: { owner: string; name: string; prCount: number }[] = []
+  let discovered: { owner: string; name: string; prNumbers: number[] }[] = []
+  let truncated = false
   try {
-    discovered = await searchUserPRRepos(octokit, username, from, to)
-    searchSpinner.succeed(`发现 ${discovered.length} 个相关仓库，共 ${discovered.reduce((s, r) => s + r.prCount, 0)} 条 PR`)
+    const result = await searchUserPRRepos(octokit, username, from, to)
+    discovered = result.repos
+    truncated = result.truncated
+    const totalPRs = discovered.reduce((s, r) => s + r.prNumbers.length, 0)
+    if (truncated) {
+      searchSpinner.warn(
+        `发现 ${discovered.length} 个相关仓库，共 ${totalPRs} 条 PR ` +
+        `（已达 GitHub 搜索 1000 条上限，部分 PR 可能被遗漏；建议缩小时间范围重试）`,
+      )
+    } else {
+      searchSpinner.succeed(`发现 ${discovered.length} 个相关仓库，共 ${totalPRs} 条 PR`)
+    }
   } catch (err) {
     searchSpinner.fail('搜索失败')
-    console.error((err as Error).message)
-    process.exit(1)
+    throw new CliError(`GitHub 搜索失败：${(err as Error).message}`)
   }
 
   if (discovered.length === 0) {
     console.log(chalk.yellow('未找到任何相关仓库，是否时间范围选得太窄？请重新运行 fetch。'))
-    process.exit(0)
+    return
   }
 
-  // Step 5: Fetch PR bodies for each repo + auto-infer company/period from PR dates
+  // Build the cache shell early and persist incrementally — if the user
+  // ctrl-c's halfway through, the partial cache survives.
+  const cache: Cache = {
+    fetchedAt: new Date().toISOString(),
+    username,
+    role,
+    jd: jd || null,
+    targetPosition: position || null,
+    profile,
+    existingExperience,
+    education,
+    repos: [],
+  }
+  await writeCache(cache, outputDir)
+
+  // Fetch PR bodies for each repo + auto-infer company/period from PR dates
   const fetchSpinner = ora('拉取 PR 详情...').start()
-  const repos: RepoData[] = []
   const failed: string[] = []
 
-  for (const r of discovered) {
+  for (let i = 0; i < discovered.length; i++) {
+    const r = discovered[i]
+    fetchSpinner.text = `拉取 ${i + 1}/${discovered.length} ${r.owner}/${r.name}...`
     try {
-      fetchSpinner.text = `拉取 ${r.owner}/${r.name}...`
-      // First build with placeholder company/period; we'll overwrite below using PR dates
-      const repoData = await buildRepoData(octokit, r.owner, r.name, username, '', '', from)
-      // Infer company/period from the most common match across this repo's PR dates
+      // Build with placeholder company/period; we'll overwrite after PR dates land.
+      const repoData = await buildRepoData(octokit, r.owner, r.name, r.prNumbers, '', '')
+      // Infer company/period from the most common match across this repo's PR dates.
       const matchCounts = new Map<string, { company: string; period: string; count: number }>()
       for (const pr of repoData.prs) {
         const match = matchExperience(pr.mergedAt, existingExperience)
@@ -117,29 +143,23 @@ export async function runFetch(options: { output?: string }) {
         repoData.company = '未分类'
         repoData.period = ''
       }
-      repos.push(repoData)
+      cache.repos.push(repoData)
+      // Persist progress after each repo so a failure mid-flight isn't fatal.
+      await writeCache(cache, outputDir)
     } catch {
       failed.push(`${r.owner}/${r.name}`)
     }
   }
 
-  fetchSpinner.succeed(`拉取完成，${repos.length} 个仓库成功${failed.length > 0 ? `，${failed.length} 个失败` : ''}`)
+  fetchSpinner.succeed(
+    `拉取完成，${cache.repos.length} 个仓库成功${failed.length > 0 ? `，${failed.length} 个失败` : ''}`,
+  )
   if (failed.length > 0) {
     console.log(chalk.yellow(`⚠ 以下仓库拉取失败：${failed.join(', ')}`))
   }
 
-  const cache: Cache = {
-    fetchedAt: new Date().toISOString(),
-    username,
-    role,
-    jd: jd || null,
-    targetPosition: position || null,
-    profile,
-    existingExperience,
-    education,
-    repos,
-  }
-
+  // Final write (covers the case where 0 repos succeeded — we still want
+  // the latest fetchedAt and config).
   await writeCache(cache, outputDir)
   console.log(chalk.green(`\n✓ 数据已缓存到 .github-resume-cache.json`))
 }

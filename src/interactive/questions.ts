@@ -2,16 +2,17 @@ import inquirer from 'inquirer'
 import { execSync } from 'child_process'
 import ora from 'ora'
 import chalk from 'chalk'
-import { ROLES } from '../config.js'
+import { ROLES } from '../roles.js'
 import { extractJDFromImage } from '../ocr/vision.js'
 import { cleanOCRText } from '../ocr/cleanup.js'
+import { expandHome } from '../utils/path.js'
 import type { RoleKey, WorkExperience, UserProfile } from '../types.js'
 
 export async function askTargetPosition(): Promise<{ position: string; jd: string | null }> {
   const { position } = await inquirer.prompt([{
     type: 'input',
     name: 'position',
-    message: '[步骤 0/5] 你在面试哪个岗位？（可选，回车跳过）',
+    message: '[步骤 1/5] 你在面试哪个岗位？（可选，回车跳过）',
   }])
 
   if (!position.trim()) return { position: '', jd: null }
@@ -22,7 +23,7 @@ export async function askTargetPosition(): Promise<{ position: string; jd: strin
     message: '是否提供 JD？',
     choices: [
       { name: '提供截图路径（本地 OCR，tesseract.js）', value: 'ocr' },
-      { name: '手动粘贴文字', value: 'manual' },
+      { name: '在编辑器中粘贴文字', value: 'manual' },
       { name: '跳过', value: 'skip' },
     ],
   }])
@@ -33,13 +34,13 @@ export async function askTargetPosition(): Promise<{ position: string; jd: strin
     const { imgPath } = await inquirer.prompt([{
       type: 'input',
       name: 'imgPath',
-      message: '请输入截图文件路径（支持 JPEG/PNG/GIF/WEBP）:',
+      message: '请输入截图文件路径（支持 ~/、JPEG/PNG/GIF/WEBP）:',
       validate: (v: string) => v.trim().length > 0 || '路径不能为空',
     }])
 
     const spinner = ora('正在识别图片（首次运行会下载中文语言包，约 15MB）...').start()
     try {
-      const extracted = await extractJDFromImage(imgPath.trim(), pct => {
+      const extracted = await extractJDFromImage(expandHome(imgPath.trim()), pct => {
         spinner.text = `识别中 ${pct}%`
       })
 
@@ -71,29 +72,16 @@ export async function askTargetPosition(): Promise<{ position: string; jd: strin
     }
   }
 
-  // Manual paste (option 2, or fallback from OCR)
-  console.log('请粘贴 JD 内容，输入完成后单独一行输入 END 并回车：')
-  const lines: string[] = []
-  const { createInterface } = await import('readline')
-  const rl = createInterface({ input: process.stdin })
-  try {
-    await new Promise<void>(resolveP => {
-      const onLine = (line: string) => {
-        if (line.trim() === 'END') {
-          rl.removeListener('line', onLine)
-          resolveP()
-        } else {
-          lines.push(line)
-        }
-      }
-      rl.on('line', onLine)
-      rl.once('close', resolveP)
-    })
-  } finally {
-    rl.close()
-  }
+  // Manual paste (option 2, or fallback from OCR) — use the editor prompt
+  // so multi-line JDs are easy to paste/edit.
+  const { jdInput } = await inquirer.prompt([{
+    type: 'editor',
+    name: 'jdInput',
+    message: '在编辑器中粘贴 JD 内容（保存并关闭后继续）',
+    waitUserInput: false,
+  }])
 
-  const jdText = lines.join('\n').trim()
+  const jdText = (jdInput ?? '').trim()
   return { position: position.trim(), jd: jdText || null }
 }
 
@@ -111,7 +99,7 @@ export async function askRole(inferredRole?: RoleKey): Promise<RoleKey> {
   const { role } = await inquirer.prompt([{
     type: 'list',
     name: 'role',
-    message: '[步骤 1/5] 确认目标工种：',
+    message: '[步骤 2/5] 确认目标工种：',
     choices,
     default: inferredRole,
   }])
@@ -123,9 +111,10 @@ export async function askPDFPath(): Promise<string> {
   const { path } = await inquirer.prompt([{
     type: 'input',
     name: 'path',
-    message: '[步骤 2/5] 旧简历 PDF 路径（回车跳过）:',
+    message: '[步骤 3/5] 旧简历 PDF 路径（支持 ~/，回车跳过）:',
   }])
-  return path.trim()
+  const trimmed = path.trim()
+  return trimmed ? expandHome(trimmed) : ''
 }
 
 export async function askUserProfile(defaults: Partial<UserProfile> = {}): Promise<UserProfile> {
@@ -142,6 +131,7 @@ function getGhCliToken(): { token: string; username: string } | null {
     const token = execSync('gh auth token', { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim()
     if (!token) return null
     const username = execSync('gh api user --jq \'.login\'', { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim()
+    if (!username) return null
     return { token, username }
   } catch {
     return null

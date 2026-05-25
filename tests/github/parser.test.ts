@@ -7,13 +7,13 @@ const samplePRs: PullRequest[] = [
     title: 'feat: add gRPC service config with retry',
     body: 'Added INTERNAL/UNAVAILABLE error retry using service config. Uses Go and gRPC.',
     mergedAt: '2025-01-10',
-    filesChanged: ['cocogrpc/client.go', 'cocogrpc/retry.go'],
+    filesChanged: [],
   },
   {
     title: 'feat: integrate Kafka consumer group',
     body: 'Implemented Kafka consumer with error retry and dead letter queue.',
     mergedAt: '2025-02-01',
-    filesChanged: ['kafka/consumer.go', 'kafka/producer.go'],
+    filesChanged: [],
   },
 ]
 
@@ -29,6 +29,51 @@ describe('extractTechStack', () => {
     const result = extractTechStack(samplePRs)
     const unique = [...new Set(result)]
     expect(result).toEqual(unique)
+  })
+
+  // Word-boundary regression tests — these would fail under naive substring matching.
+  it('does NOT match "Go" inside words like google, going, mongo', () => {
+    const prs: PullRequest[] = [{
+      title: 'integrate google login',
+      body: 'going to use mongodb logout flow with logo update',
+      mergedAt: '2025-01-01',
+      filesChanged: [],
+    }]
+    const result = extractTechStack(prs)
+    expect(result).not.toContain('Go')
+  })
+
+  it('does NOT match "Java" inside "javascript"', () => {
+    const prs: PullRequest[] = [{
+      title: 'add javascript build step',
+      body: 'using javascript and typescript only',
+      mergedAt: '2025-01-01',
+      filesChanged: [],
+    }]
+    const result = extractTechStack(prs)
+    expect(result).not.toContain('Java')
+    expect(result).toContain('TypeScript')
+    expect(result).toContain('JavaScript')
+  })
+
+  it('matches "Go" only when surrounded by non-alphanumeric chars', () => {
+    const prs: PullRequest[] = [{
+      title: 'switch to Go for backend',
+      body: 'Rewrote the service in Go.',
+      mergedAt: '2025-01-01',
+      filesChanged: [],
+    }]
+    expect(extractTechStack(prs)).toContain('Go')
+  })
+
+  it('handles "Node.js" as a single keyword (dot is part of the keyword)', () => {
+    const prs: PullRequest[] = [{
+      title: 'upgrade to Node.js 20',
+      body: 'Bumped Node.js engine.',
+      mergedAt: '2025-01-01',
+      filesChanged: [],
+    }]
+    expect(extractTechStack(prs)).toContain('Node.js')
   })
 })
 
