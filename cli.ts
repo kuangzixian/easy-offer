@@ -3,6 +3,7 @@ import { program } from 'commander'
 import chalk from 'chalk'
 import { registerCommands } from './src/commands/index.js'
 import { ensureConfig } from './src/config/ensure.js'
+import { shouldEnsureConfig } from './src/config/gate.js'
 import { CliError } from './src/utils/errors.js'
 
 program
@@ -13,10 +14,8 @@ program
 registerCommands(program)
 
 async function main() {
-  // Skip ensureConfig when the user is running `config` itself,
-  // otherwise a broken config could never be fixed.
-  const subcommand = process.argv[2]
-  if (subcommand !== 'config') {
+  // Help/version/config must work even when LLM config is missing or broken.
+  if (shouldEnsureConfig(process.argv.slice(2))) {
     await ensureConfig()
   }
   await program.parseAsync()

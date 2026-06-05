@@ -195,7 +195,7 @@ export async function askDateRange(
 }
 
 export async function askReposToInclude(
-  repos: { name: string; company: string; period: string; prCount: number }[],
+  repos: { key?: string; name: string; org?: string; company: string; period: string; prCount: number }[],
 ): Promise<string[]> {
   if (repos.length === 0) return []
   const { selected } = await inquirer.prompt([{
@@ -203,8 +203,8 @@ export async function askReposToInclude(
     name: 'selected',
     message: '选择要写入简历的项目经历（空格切换，回车确认）:',
     choices: repos.map(r => ({
-      name: `[${r.company || '未分类'} ${r.period || '-'}] ${r.name} (${r.prCount} PRs)`,
-      value: r.name,
+      name: `[${r.company || '未分类'} ${r.period || '-'}] ${r.org ? `${r.org}/` : ''}${r.name} (${r.prCount} PRs)`,
+      value: r.key ?? r.name,
       checked: true,
     })),
     validate: (ans: string[]) => ans.length > 0 || '请至少保留一个项目',

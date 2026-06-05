@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
   searchUserPRRepos,
   fetchRepoPRs,
+  fetchRepoPRsWithStats,
   buildRepoData,
   type DiscoveredRepo,
 } from '../../src/github/client.js'
@@ -193,6 +194,19 @@ describe('fetchRepoPRs', () => {
     const prs = await fetchRepoPRs(octokit as any, 'org', 'repo', [1])
     expect(prs[0].body).toBe('')
   })
+
+  it('reports failed and unmerged counts when requested', async () => {
+    octokit.pulls.get
+      .mockResolvedValueOnce({ data: { title: 'ok', body: '', merged_at: '2024-01-01T00:00:00Z' } })
+      .mockRejectedValueOnce(new Error('rate limited'))
+      .mockResolvedValueOnce({ data: { title: 'open', body: '', merged_at: null } })
+
+    const result = await fetchRepoPRsWithStats(octokit as any, 'org', 'repo', [1, 2, 3])
+    expect(result.prs).toHaveLength(1)
+    expect(result.requestedCount).toBe(3)
+    expect(result.failedCount).toBe(1)
+    expect(result.skippedUnmergedCount).toBe(1)
+  })
 })
 
 describe('buildRepoData', () => {
@@ -218,6 +232,34 @@ describe('buildRepoData', () => {
     expect(repo.prs).toHaveLength(1)
     expect(repo.techStack).toContain('Go')
     expect(repo.techStack).toContain('gRPC')
+    expect(repo.requestedPrCount).toBe(1)
+    expect(repo.failedPrFetchCount).toBe(0)
+  })
+
+  it('throws when every requested PR fails to fetch', async () => {
+    octokit.pulls.get
+      .mockRejectedValueOnce(new Error('404'))
+      .mockRejectedValueOnce(new Error('rate limited'))
+
+    await expect(buildRepoData(octokit as any, 'org', 'svc', [1, 2], '甲公司', '2024'))
+      .rejects.toThrow(/未能拉取 org\/svc 的有效 PR/)
+  })
+
+  it('keeps successful PRs and records partial fetch failures', async () => {
+    octokit.pulls.get
+      .mockResolvedValueOnce({
+        data: {
+          title: 'feat: add Redis cache',
+          body: 'Use Redis for hot data.',
+          merged_at: '2024-01-01T00:00:00Z',
+        },
+      })
+      .mockRejectedValueOnce(new Error('502'))
+
+    const repo = await buildRepoData(octokit as any, 'org', 'svc', [1, 2], '甲公司', '2024')
+    expect(repo.prs).toHaveLength(1)
+    expect(repo.failedPrFetchCount).toBe(1)
+    expect(repo.requestedPrCount).toBe(2)
   })
 })
 

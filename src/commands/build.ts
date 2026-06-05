@@ -1,4 +1,4 @@
-import { writeFile } from 'fs/promises'
+import { mkdir, writeFile } from 'fs/promises'
 import { resolve } from 'path'
 import ora from 'ora'
 import chalk from 'chalk'
@@ -37,14 +37,16 @@ export async function runBuild(options: { output?: string; noPdf?: boolean }) {
   // Let user curate which repos to include
   const selected = await askReposToInclude(
     cache.repos.map(r => ({
+      key: `${r.org}/${r.name}`,
       name: r.name,
+      org: r.org,
       company: r.company,
       period: r.period,
       prCount: r.prs.length,
     })),
   )
   const selectedSet = new Set(selected)
-  const includedRepos = cache.repos.filter(r => selectedSet.has(r.name))
+  const includedRepos = cache.repos.filter(r => selectedSet.has(`${r.org}/${r.name}`))
 
   if (includedRepos.length === 0) {
     throw new CliError('未选择任何项目，退出')
@@ -126,6 +128,7 @@ ${cache.education}
 `
 
   const mdPath = resolve(outputDir, 'resume.md')
+  await mkdir(outputDir, { recursive: true })
   await writeFile(mdPath, resumeMd, 'utf-8')
   console.log(chalk.green(`\n✓ resume.md 已生成`))
 

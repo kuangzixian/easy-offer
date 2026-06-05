@@ -1,6 +1,6 @@
-import { readFile, writeFile } from 'fs/promises'
+import { mkdir, readFile, writeFile } from 'fs/promises'
 import { existsSync } from 'fs'
-import { resolve } from 'path'
+import { dirname, resolve } from 'path'
 import type { Cache } from './types.js'
 
 export function getCachePath(dir = '.'): string {
@@ -21,5 +21,6 @@ export async function readCache(dir = '.'): Promise<Cache | null> {
 
 export async function writeCache(data: Cache, dir = '.'): Promise<void> {
   const path = getCachePath(dir)
+  await mkdir(dirname(path), { recursive: true })
   await writeFile(path, JSON.stringify(data, null, 2), 'utf-8')
 }

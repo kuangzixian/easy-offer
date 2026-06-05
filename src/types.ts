@@ -19,6 +19,9 @@ export interface RepoData {
   period: string
   techStack: string[]
   prs: PullRequest[]
+  requestedPrCount?: number
+  failedPrFetchCount?: number
+  skippedUnmergedPrCount?: number
 }
 
 export interface UserProfile {

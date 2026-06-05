@@ -1,4 +1,4 @@
-import { writeFile, readFile } from 'fs/promises'
+import { mkdir, writeFile, readFile } from 'fs/promises'
 import { resolve } from 'path'
 import { existsSync } from 'fs'
 import ora from 'ora'
@@ -63,6 +63,7 @@ export async function runInterview(options: { output?: string }) {
       },
     })
     const outPath = resolve(outputDir, 'interview-prep.md')
+    await mkdir(outputDir, { recursive: true })
     await writeFile(outPath, result, 'utf-8')
     spinner.succeed('interview-prep.md 已生成')
   } catch (err) {

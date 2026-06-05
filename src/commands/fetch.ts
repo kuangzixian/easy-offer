@@ -28,7 +28,11 @@ export async function runFetch(options: { output?: string }) {
     const spinner = ora('分析 JD，推断工种...').start()
     try {
       inferredRole = inferRoleFromJD(jd)
-      spinner.succeed(`推断工种：${inferredRole}`)
+      if (inferredRole) {
+        spinner.succeed(`推断工种：${inferredRole}`)
+      } else {
+        spinner.warn('未能明确推断工种，请手动选择')
+      }
     } catch {
       spinner.fail('推断失败，请手动选择')
     }
@@ -118,6 +122,7 @@ export async function runFetch(options: { output?: string }) {
   // Fetch PR bodies for each repo + auto-infer company/period from PR dates
   const fetchSpinner = ora('拉取 PR 详情...').start()
   const failed: string[] = []
+  const partialFailures: string[] = []
 
   for (let i = 0; i < discovered.length; i++) {
     const r = discovered[i]
@@ -144,10 +149,17 @@ export async function runFetch(options: { output?: string }) {
         repoData.period = ''
       }
       cache.repos.push(repoData)
+      if ((repoData.failedPrFetchCount ?? 0) > 0) {
+        const requestedCount = repoData.requestedPrCount ?? r.prNumbers.length
+        partialFailures.push(
+          `${r.owner}/${r.name} (${repoData.failedPrFetchCount}/${requestedCount} 个 PR 失败)`,
+        )
+      }
       // Persist progress after each repo so a failure mid-flight isn't fatal.
       await writeCache(cache, outputDir)
-    } catch {
-      failed.push(`${r.owner}/${r.name}`)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      failed.push(`${r.owner}/${r.name}: ${msg}`)
     }
   }
 
@@ -156,6 +168,9 @@ export async function runFetch(options: { output?: string }) {
   )
   if (failed.length > 0) {
     console.log(chalk.yellow(`⚠ 以下仓库拉取失败：${failed.join(', ')}`))
+  }
+  if (partialFailures.length > 0) {
+    console.log(chalk.yellow(`⚠ 以下仓库有部分 PR 拉取失败：${partialFailures.join(', ')}`))
   }
 
   // Final write (covers the case where 0 repos succeeded — we still want

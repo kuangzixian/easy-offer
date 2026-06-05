@@ -71,11 +71,11 @@ export function getRoleConfig(key: RoleKey): RoleConfig {
 }
 
 /**
- * Score JD text against each role's keywords (case-insensitive substring match)
- * and return the highest-scoring role key. Used as a hint only — the user can
- * always override.
+ * Score JD text against each role's keywords (case-insensitive substring match).
+ * Returns the highest-scoring role key only when at least one keyword matched.
+ * Used as a hint only — the user can always override.
  */
-export function inferRoleFromJD(jd: string): RoleKey {
+export function inferRoleFromJD(jd: string): RoleKey | undefined {
   const scores: Record<RoleKey, number> = {
     go: 0, java: 0, node: 0, frontend: 0,
     ios: 0, android: 0, fullstack: 0, architect: 0, ai: 0,
@@ -87,5 +87,6 @@ export function inferRoleFromJD(jd: string): RoleKey {
     }
   }
   const best = Object.entries(scores).sort((a, b) => b[1] - a[1])[0]
+  if (!best || best[1] === 0) return undefined
   return best[0] as RoleKey
 }
