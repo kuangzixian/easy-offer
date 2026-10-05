@@ -10,12 +10,19 @@
     "build": "tsc",
     "test": "vitest run",
     "test:watch": "vitest",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "dev:web": "vite",
+    "dev:api": "wrangler dev",
+    "build:web": "vite build",
+    "check:web": "tsc -p tsconfig.web.json",
+    "preview:web": "npm run build:web && wrangler dev",
+    "deploy:web": "npm run check:web && npm run build:web && wrangler deploy"
   },
   "dependencies": {
     "@octokit/rest": "^21.0.0",
     "chalk": "^5.0.0",
     "commander": "^12.0.0",
+    "dompurify": "^3.4.16",
     "inquirer": "^9.0.0",
     "marked": "^12.0.0",
     "openai": "^6.34.0",
@@ -30,7 +37,9 @@
     "@types/pdf-parse": "^1.1.4",
     "tsx": "^4.0.0",
     "typescript": "^5.0.0",
-    "vitest": "^1.0.0"
+    "vite": "^8.3.2",
+    "vitest": "^4.1.11",
+    "wrangler": "^4.147.0"
   },
   "type": "module",
   "engines": {

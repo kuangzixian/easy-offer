@@ -3,6 +3,12 @@ node_modules/
 
 # Build output
 dist/
+dist-web/
+.wrangler/
+.dev.vars
+.dev.vars.*
+output/
+.playwright-cli/
 
 # Runtime output (contains personal resume + GitHub PR data)
 .github-resume-cache.json
