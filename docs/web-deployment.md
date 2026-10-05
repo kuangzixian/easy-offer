@@ -73,3 +73,5 @@ npm run dev:api
 - Workers 运行时只接受 `redirect: 'manual'` 或 `follow`。这里使用 `manual` 并拒绝所有 3xx，避免携带用户 Key 跟随重定向。Node 模拟测试不能代替 Workers 运行时验证。
 - DeepSeek 默认模型为 `deepseek-flash`，也可填写 `deepseek-v4-pro`。请求明确使用非思考模式，让 4096 token 输出预算用于简历正文；不自动重试，以免重复计费。参见 [DeepSeek 官方参数](https://api-docs.deepseek.com/api/create-chat-completion/)。
 - 连接失败、响应中断、无效 JSON、内容超限和重定向分别返回固定错误代码，原始供应商错误、密钥和素材不写日志、不回显。
+
+Cloudflare 分支构建使用 `npx wrangler preview`，需要配置顶层 `previews: {}`；正式 `main` 仍使用 `npx wrangler deploy`。预览构建失败不能当作正式部署失败，也不能跳过检查具体原因。
