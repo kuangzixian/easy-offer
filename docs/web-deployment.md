@@ -66,3 +66,10 @@ npm run dev:api
 6. 用大陆手机流量另行测试网络可达性。Cloudflare 免费地址、付费套餐或自定义域名都不能单凭配置保证大陆连接稳定。
 
 单元测试使用虚构 Key 与模拟上游，不会花费真实模型额度。测试通过、代码推送、Cloudflare 部署成功、真实 AI 调用成功是不同层次，交付时分别报告。
+
+## 模型转发兼容性
+
+- 浏览器调用本站 `/api/chat`，再由 Worker 调用固定供应商接口；浏览器请求地址不直接显示 DeepSeek 是正常现象。
+- Workers 运行时只接受 `redirect: 'manual'` 或 `follow`。这里使用 `manual` 并拒绝所有 3xx，避免携带用户 Key 跟随重定向。Node 模拟测试不能代替 Workers 运行时验证。
+- DeepSeek 默认模型为 `deepseek-flash`，也可填写 `deepseek-v4-pro`。请求明确使用非思考模式，让 4096 token 输出预算用于简历正文；不自动重试，以免重复计费。参见 [DeepSeek 官方参数](https://api-docs.deepseek.com/api/create-chat-completion/)。
+- 连接失败、响应中断、无效 JSON、内容超限和重定向分别返回固定错误代码，原始供应商错误、密钥和素材不写日志、不回显。
