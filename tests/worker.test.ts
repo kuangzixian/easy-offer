@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import worker from '../worker/index.js'
 
 const KEY = 'fake-key-for-unit-tests'
-const valid = { provider: 'deepseek', apiKey: KEY, model: 'deepseek-chat', messages: [{ role: 'user', content: 'Write a factual resume.' }] }
+const valid = { provider: 'deepseek', apiKey: KEY, model: 'deepseek-v4-pro', messages: [{ role: 'user', content: 'Write a factual resume.' }] }
 function request(body: unknown = valid, extra: RequestInit = {}, path = '/api/chat'): Request {
   return new Request(`https://offer.example${path}`, { method: 'POST', headers: { Origin: 'https://offer.example', 'Content-Type': 'application/json' }, body: JSON.stringify(body), ...extra })
 }
@@ -20,9 +20,9 @@ describe('BYOK Worker', () => {
     expect(response.headers.get('Cache-Control')).toBe('no-store')
     const [url, init] = upstream.mock.calls[0]
     expect(url).toBe('https://api.deepseek.com/chat/completions')
-    expect(init.redirect).toBe('error')
+    expect(init.redirect).toBe('manual')
     expect(init.headers.Authorization).toBe(`Bearer ${KEY}`)
-    expect(JSON.parse(init.body)).toEqual({ model: 'deepseek-chat', messages: valid.messages, max_tokens: 4096, stream: false })
+    expect(JSON.parse(init.body)).toEqual({ model: 'deepseek-v4-pro', messages: valid.messages, max_tokens: 4096, stream: false, thinking: { type: 'disabled' } })
     expect(upstream).toHaveBeenCalledTimes(1)
   })
 
@@ -58,6 +58,44 @@ describe('BYOK Worker', () => {
     expect(upstream).not.toHaveBeenCalled()
   })
 
+  it('keeps DeepSeek-only options out of other providers', async () => {
+    const upstream = vi.fn().mockResolvedValue(answer())
+    vi.stubGlobal('fetch', upstream)
+    await worker.fetch(request({ ...valid, provider: 'openai', model: 'gpt-4.1-mini' }))
+    expect(JSON.parse(upstream.mock.calls[0][1].body)).not.toHaveProperty('thinking')
+  })
+
+  it('refuses redirects without leaking a key or following Location', async () => {
+    const upstream = vi.fn().mockResolvedValue(new Response(KEY, { status: 307, headers: { Location: 'https://other.example/' } }))
+    vi.stubGlobal('fetch', upstream)
+    const response = await worker.fetch(request())
+    expect(response.status).toBe(502)
+    expect(await response.json()).toMatchObject({ code: 'UPSTREAM_REDIRECT' })
+    expect(upstream).toHaveBeenCalledTimes(1)
+  })
+
+  it('accepts JSON after DeepSeek keep-alive blank lines', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('\n\n' + JSON.stringify({ choices: [{ message: { content: 'resume' } }] }))))
+    expect(await (await worker.fetch(request())).json()).toEqual({ content: 'resume' })
+  })
+
+  it.each(['', '<html>upstream page</html>', '{"choices":'])('identifies invalid provider JSON without echoing it', async text => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(text)))
+    expect(await (await worker.fetch(request())).json()).toMatchObject({ code: 'UPSTREAM_INVALID_RESPONSE' })
+  })
+
+  it('distinguishes connection and response-stream failures without exposing exceptions', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error(KEY)))
+    const connection = await (await worker.fetch(request())).json()
+    expect(connection).toMatchObject({ code: 'UPSTREAM_CONNECTION_FAILED' })
+    expect(JSON.stringify(connection)).not.toContain(KEY)
+    const body = new ReadableStream({ start(controller) { controller.error(new Error(KEY)) } })
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(body)))
+    const interrupted = await (await worker.fetch(request())).json()
+    expect(interrupted).toMatchObject({ code: 'UPSTREAM_INTERRUPTED' })
+    expect(JSON.stringify(interrupted)).not.toContain(KEY)
+  })
+
   it('does not reuse a key across concurrent requests', async () => {
     const seen: string[] = []
     vi.stubGlobal('fetch', vi.fn(async (_url, init) => { seen.push(init.headers.Authorization); return answer() }))
@@ -86,7 +124,7 @@ describe('BYOK Worker', () => {
 
   it('rejects oversized and malformed provider output', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('x'.repeat(1024 * 1024 + 1))))
-    expect((await worker.fetch(request())).status).toBe(502)
+    expect(await (await worker.fetch(request())).json()).toMatchObject({ code: 'UPSTREAM_TOO_LARGE' })
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ choices: [] })))
     expect((await worker.fetch(request())).status).toBe(502)
   })

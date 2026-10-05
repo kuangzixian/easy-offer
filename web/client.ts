@@ -3,7 +3,7 @@ import type { PullRequest, RepoData, RoleKey, UserProfile } from '../src/types.j
 
 export type Provider = 'deepseek' | 'openai' | 'openrouter' | 'volcengine'
 export const PROVIDERS: { id: Provider; label: string; defaultModel: string }[] = [
-  { id: 'deepseek', label: 'DeepSeek', defaultModel: 'deepseek-chat' },
+  { id: 'deepseek', label: 'DeepSeek', defaultModel: 'deepseek-flash' },
   { id: 'openai', label: 'OpenAI', defaultModel: 'gpt-4.1-mini' },
   { id: 'openrouter', label: 'OpenRouter', defaultModel: 'openai/gpt-4.1-mini' },
   { id: 'volcengine', label: '火山方舟', defaultModel: '' },

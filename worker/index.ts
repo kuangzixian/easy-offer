@@ -105,24 +105,34 @@ async function relay(request: Request): Promise<Response> {
   const abort = () => controller.abort()
   request.signal.addEventListener('abort', abort, { once: true })
   const timeout = setTimeout(() => { timedOut = true; controller.abort() }, TIMEOUT_MS)
+  let phase: 'connect' | 'read' | 'parse' = 'connect'
   try {
     const upstream = await fetch(ENDPOINTS[payload.provider], {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${payload.apiKey}` },
-      body: JSON.stringify({ model: payload.model, messages: payload.messages, max_tokens: payload.maxTokens, stream: false }),
+      body: JSON.stringify({
+        model: payload.model, messages: payload.messages, max_tokens: payload.maxTokens, stream: false,
+        // V4 defaults to thinking; reserve the bounded output budget for the actual document.
+        ...(payload.provider === 'deepseek' ? { thinking: { type: 'disabled' } } : {}),
+      }),
       signal: controller.signal,
-      redirect: 'error',
+      // Workers supports manual/follow only. Never follow a redirect carrying the user's key.
+      redirect: 'manual',
     })
     if (!upstream.ok) {
       await upstream.body?.cancel().catch(() => {})
       const status = upstream.status
+      if (status >= 300 && status < 400) return json({ error: '模型服务返回了地址跳转，本站已停止转发以保护密钥。', code: 'UPSTREAM_REDIRECT' }, 502)
       // Do not expose upstream bodies: some providers echo credentials or input in errors.
       if (status === 401 || status === 403) return json({ error: '模型服务拒绝访问，请检查 API Key 和模型权限。' }, 401)
       if (status === 429 || status === 402) return json({ error: '模型服务额度不足或请求过于频繁，请检查余额或稍后再试。' }, 429)
       if (status === 400 || status === 404 || status === 422) return json({ error: '模型服务未接受请求，请检查模型名称及服务商支持情况。' }, 422)
       return json({ error: '模型服务暂时不可用，请稍后再试。' }, 502)
     }
-    const data: unknown = JSON.parse(await limitedText(upstream.body, MAX_RESPONSE_BYTES))
+    phase = 'read'
+    const text = await limitedText(upstream.body, MAX_RESPONSE_BYTES)
+    phase = 'parse'
+    const data: unknown = JSON.parse(text)
     const choices = record(data) && Array.isArray(data.choices) ? data.choices : []
     const message = record(choices[0]) && record(choices[0].message) ? choices[0].message : null
     if (!message || typeof message.content !== 'string' || !message.content.trim() || message.content.length > 100_000) {
@@ -134,10 +144,13 @@ async function relay(request: Request): Promise<Response> {
       return json({ content: `${content}\n\n> 本次输出达到长度上限，内容可能不完整。请减少素材后重新生成。` })
     }
     return json({ content })
-  } catch {
+  } catch (error) {
     if (timedOut) return json({ error: '生成超时，请稍后重试。模型服务可能已产生费用。' }, 504)
     if (request.signal.aborted) return json({ error: '请求已取消。' }, 499)
-    return json({ error: '暂时无法连接模型服务，或返回内容不符合要求。' }, 502)
+    if (error instanceof TooLarge) return json({ error: '模型返回内容过大，请减少素材后重试。', code: 'UPSTREAM_TOO_LARGE' }, 502)
+    if (phase === 'parse') return json({ error: '模型服务返回格式异常，请稍后再试。', code: 'UPSTREAM_INVALID_RESPONSE' }, 502)
+    if (phase === 'read') return json({ error: '接收模型回复时连接中断，请稍后重试。模型服务可能已产生费用。', code: 'UPSTREAM_INTERRUPTED' }, 502)
+    return json({ error: '本站暂时无法连接模型服务，请稍后重试。', code: 'UPSTREAM_CONNECTION_FAILED' }, 502)
   } finally {
     clearTimeout(timeout)
     request.signal.removeEventListener('abort', abort)
