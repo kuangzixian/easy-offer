@@ -4,6 +4,8 @@
 
 ## 手机网页版
 
+**在线使用：[easy-offer.kznb.workers.dev](https://easy-offer.kznb.workers.dev/)**
+
 新增适配手机和桌面的 Web 工作台，原有 CLI 仍可使用。
 
 - 准备岗位、JD、个人信息与工作经历；也可以不用 GitHub，直接粘贴项目素材。

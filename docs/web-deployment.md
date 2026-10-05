@@ -1,5 +1,14 @@
 # Easy Offer Web
 
+## 当前发布
+
+- 访问地址：<https://easy-offer.kznb.workers.dev/>
+- Worker：`easy-offer`，个人 Cloudflare 账号，GitHub `main` 分支自动构建部署。
+- 2026-10-05 首次发布版本：`cc8b2ba1-140e-422a-b069-f1da2b2ee8d3`；代码提交 `a652027`。
+- GitHub CI：162 项测试、CLI 构建、Web 类型检查、Web 构建与 Wrangler 部署预检通过。
+- 已验证线上首页、健康接口、缺失 Key 拒绝；手机宽度布局、示例与编辑预览、切换服务商清 Key、刷新后草稿恢复但密钥为空。
+- 未使用真实模型 Key 做付费生成；模型端到端验证需使用者在网页输入自己的 Key。浏览器打印/PDF 和手机实际网络体验仍应在目标设备试用。
+
 ## 架构与成本
 
 手机/桌面网页使用 Vite 构建为静态资源，Cloudflare Workers 直接提供这些资源。仅 `/api/*` 进入 Worker；不启用每次静态请求都执行 Worker 的模式。模型请求由 Worker 转发，GitHub 素材由浏览器直接请求 GitHub API。没有数据库、账号登录或云端同步。
