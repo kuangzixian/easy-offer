@@ -119,7 +119,8 @@ describe('BYOK Worker', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ choices: [{ message: { content: `hello ${KEY}` }, finish_reason: 'length' }] })))
     const text = await (await worker.fetch(request())).text()
     expect(text).not.toContain(KEY)
-    expect(text).toContain('长度上限')
+    expect(JSON.parse(text)).toMatchObject({ truncated: true, code: 'OUTPUT_TRUNCATED' })
+    expect(JSON.parse(text).content).toContain('hello')
   })
 
   it('rejects oversized and malformed provider output', async () => {

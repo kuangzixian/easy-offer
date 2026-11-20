@@ -25,6 +25,10 @@ function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: RESPONSE_HEADERS })
 }
 
+function fail(code: string, message: string, status: number): Response {
+  return json({ error: message, code }, status)
+}
+
 class TooLarge extends Error {}
 
 async function limitedText(stream: ReadableStream<Uint8Array> | null, limit: number): Promise<string> {
@@ -83,22 +87,22 @@ function parsePayload(value: unknown): Payload | null {
 
 async function relay(request: Request): Promise<Response> {
   const url = new URL(request.url)
-  if (url.search) return json({ error: '请求参数请放在正文中。' }, 400)
-  if (request.headers.get('Origin') !== url.origin) return json({ error: '请从本站页面发起请求。' }, 403)
-  if (!/^application\/json(?:\s*;|$)/i.test(request.headers.get('Content-Type') ?? '')) return json({ error: '请求必须使用 JSON。' }, 415)
+  if (url.search) return fail('REQUEST_QUERY_FORBIDDEN', '请求参数请放在正文中。', 400)
+  if (request.headers.get('Origin') !== url.origin) return fail('ORIGIN_FORBIDDEN', '请从本站页面发起请求。', 403)
+  if (!/^application\/json(?:\s*;|$)/i.test(request.headers.get('Content-Type') ?? '')) return fail('JSON_REQUIRED', '请求必须使用 JSON。', 415)
   const length = request.headers.get('Content-Length')
-  if (length && (!/^\d+$/.test(length) || Number(length) > MAX_BODY_BYTES)) return json({ error: '输入内容过长，请缩短后重试。' }, 413)
+  if (length && (!/^\d+$/.test(length) || Number(length) > MAX_BODY_BYTES)) return fail('PAYLOAD_TOO_LARGE', '输入内容过长，请缩短后重试。', 413)
 
   let payload: Payload | null
   try {
     payload = parsePayload(JSON.parse(await limitedText(request.body, MAX_BODY_BYTES)))
   } catch (error) {
     return error instanceof TooLarge
-      ? json({ error: '输入内容过长，请缩短后重试。' }, 413)
-      : json({ error: '请求内容无效。' }, 400)
+      ? fail('PAYLOAD_TOO_LARGE', '输入内容过长，请缩短后重试。', 413)
+      : fail('INVALID_JSON', '请求内容无效。', 400)
   }
-  if (!payload) return json({ error: '请检查服务商、模型、API Key 和输入内容。' }, 400)
-  if (request.signal.aborted) return json({ error: '请求已取消。' }, 499)
+  if (!payload) return fail('INVALID_PAYLOAD', '请检查服务商、模型、API Key 和输入内容。', 400)
+  if (request.signal.aborted) return fail('REQUEST_CANCELLED', '请求已取消。', 499)
 
   const controller = new AbortController()
   let timedOut = false
@@ -122,12 +126,12 @@ async function relay(request: Request): Promise<Response> {
     if (!upstream.ok) {
       await upstream.body?.cancel().catch(() => {})
       const status = upstream.status
-      if (status >= 300 && status < 400) return json({ error: '模型服务返回了地址跳转，本站已停止转发以保护密钥。', code: 'UPSTREAM_REDIRECT' }, 502)
+      if (status >= 300 && status < 400) return fail('UPSTREAM_REDIRECT', '模型服务返回了地址跳转，本站已停止转发以保护密钥。', 502)
       // Do not expose upstream bodies: some providers echo credentials or input in errors.
-      if (status === 401 || status === 403) return json({ error: '模型服务拒绝访问，请检查 API Key 和模型权限。' }, 401)
-      if (status === 429 || status === 402) return json({ error: '模型服务额度不足或请求过于频繁，请检查余额或稍后再试。' }, 429)
-      if (status === 400 || status === 404 || status === 422) return json({ error: '模型服务未接受请求，请检查模型名称及服务商支持情况。' }, 422)
-      return json({ error: '模型服务暂时不可用，请稍后再试。' }, 502)
+      if (status === 401 || status === 403) return fail('UPSTREAM_UNAUTHORIZED', '模型服务拒绝访问，请检查 API Key 和模型权限。', 401)
+      if (status === 429 || status === 402) return fail('UPSTREAM_RATE_LIMITED', '模型服务额度不足或请求过于频繁，请检查余额或稍后再试。', 429)
+      if (status === 400 || status === 404 || status === 422) return fail('UPSTREAM_BAD_REQUEST', '模型服务未接受请求，请检查模型名称及服务商支持情况。', 422)
+      return fail('UPSTREAM_UNAVAILABLE', '模型服务暂时不可用，请稍后再试。', 502)
     }
     phase = 'read'
     const text = await limitedText(upstream.body, MAX_RESPONSE_BYTES)
@@ -136,21 +140,21 @@ async function relay(request: Request): Promise<Response> {
     const choices = record(data) && Array.isArray(data.choices) ? data.choices : []
     const message = record(choices[0]) && record(choices[0].message) ? choices[0].message : null
     if (!message || typeof message.content !== 'string' || !message.content.trim() || message.content.length > 100_000) {
-      return json({ error: '模型未返回可用文本，请检查模型是否支持文字对话。' }, 502)
+      return fail('UPSTREAM_EMPTY', '模型未返回可用文本，请检查模型是否支持文字对话。', 502)
     }
     // Never return a leaked key even if an upstream response unexpectedly includes it.
     const content = message.content.split(payload.apiKey).join('[已隐藏凭据]')
     if (record(choices[0]) && choices[0].finish_reason === 'length') {
-      return json({ content: `${content}\n\n> 本次输出达到长度上限，内容可能不完整。请减少素材后重新生成。` })
+      return json({ content, truncated: true, code: 'OUTPUT_TRUNCATED' })
     }
     return json({ content })
   } catch (error) {
-    if (timedOut) return json({ error: '生成超时，请稍后重试。模型服务可能已产生费用。' }, 504)
-    if (request.signal.aborted) return json({ error: '请求已取消。' }, 499)
-    if (error instanceof TooLarge) return json({ error: '模型返回内容过大，请减少素材后重试。', code: 'UPSTREAM_TOO_LARGE' }, 502)
-    if (phase === 'parse') return json({ error: '模型服务返回格式异常，请稍后再试。', code: 'UPSTREAM_INVALID_RESPONSE' }, 502)
-    if (phase === 'read') return json({ error: '接收模型回复时连接中断，请稍后重试。模型服务可能已产生费用。', code: 'UPSTREAM_INTERRUPTED' }, 502)
-    return json({ error: '本站暂时无法连接模型服务，请稍后重试。', code: 'UPSTREAM_CONNECTION_FAILED' }, 502)
+    if (timedOut) return fail('GENERATION_TIMEOUT', '生成超时，请稍后重试。模型服务可能已产生费用。', 504)
+    if (request.signal.aborted) return fail('REQUEST_CANCELLED', '请求已取消。', 499)
+    if (error instanceof TooLarge) return fail('UPSTREAM_TOO_LARGE', '模型返回内容过大，请减少素材后重试。', 502)
+    if (phase === 'parse') return fail('UPSTREAM_INVALID_RESPONSE', '模型服务返回格式异常，请稍后再试。', 502)
+    if (phase === 'read') return fail('UPSTREAM_INTERRUPTED', '接收模型回复时连接中断，请稍后重试。模型服务可能已产生费用。', 502)
+    return fail('UPSTREAM_CONNECTION_FAILED', '本站暂时无法连接模型服务，请稍后重试。', 502)
   } finally {
     clearTimeout(timeout)
     request.signal.removeEventListener('abort', abort)
@@ -163,12 +167,12 @@ export default {
     if (url.pathname === '/api/health') {
       return request.method === 'GET' && !url.search
         ? json({ ok: true })
-        : json({ error: '不支持此请求。' }, 405)
+        : fail('METHOD_NOT_ALLOWED', '不支持此请求。', 405)
     }
     if (url.pathname === '/api/chat') {
-      return request.method === 'POST' ? relay(request) : json({ error: '仅支持 POST 请求。' }, 405)
+      return request.method === 'POST' ? relay(request) : fail('METHOD_POST_ONLY', '仅支持 POST 请求。', 405)
     }
-    if (url.pathname.startsWith('/api/')) return json({ error: '接口不存在。' }, 404)
-    return env.ASSETS ? env.ASSETS.fetch(request) : json({ error: '页面不存在。' }, 404)
+    if (url.pathname.startsWith('/api/')) return fail('NOT_FOUND', '接口不存在。', 404)
+    return env.ASSETS ? env.ASSETS.fetch(request) : fail('NOT_FOUND', '页面不存在。', 404)
   },
 }
