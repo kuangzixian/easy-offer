@@ -13,7 +13,7 @@
     "prepublishOnly": "npm run build",
     "dev:web": "vite",
     "dev:api": "wrangler dev",
-    "build:web": "vite build",
+    "build:web": "vite build && tsx scripts/locale-html.ts",
     "check:web": "tsc -p tsconfig.web.json",
     "preview:web": "npm run build:web && wrangler dev",
     "deploy:web": "npm run check:web && npm run build:web && wrangler deploy"
